@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { Asset, ASSET_STATUSES } from '../types';
+import { Asset, ASSET_STATUSES, AssetLog } from '../types';
 import { parseAssetDescription, isAiConfigured } from '../services/geminiService';
-import { getAppConfig } from '../services/storageService';
-import { Sparkles, Save, X, Loader2 } from 'lucide-react';
+import { getAppConfig, getAssetLogs } from '../services/storageService';
+import { Sparkles, Save, X, Loader2, Clock, User, Circle } from 'lucide-react';
 
 interface AssetFormProps {
   initialData?: Asset | null;
@@ -33,6 +33,9 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
   const [mode, setMode] = useState<'manual' | 'ai'>('manual');
   const [error, setError] = useState<string | null>(null);
   
+  // History Logs
+  const [logs, setLogs] = useState<AssetLog[]>([]);
+  
   // Config state
   const [categories, setCategories] = useState<string[]>([]);
   const [locations, setLocations] = useState<string[]>([]);
@@ -48,6 +51,8 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
 
         if (initialData) {
             setFormData(initialData);
+            // Load logs
+            setLogs(await getAssetLogs(initialData.id));
         } else {
             setFormData({
                 ...emptyAsset,
@@ -103,7 +108,6 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
         <h2 className="text-xl font-bold text-slate-900">
           {initialData ? 'Edit Asset' : 'Onboard New Asset'}
         </h2>
-        {/* Only show AI toggle if configured and creating new asset */}
         {!initialData && aiAvailable && (
           <div className="flex bg-slate-100 p-1 rounded-lg">
             <button
@@ -148,7 +152,7 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
           </div>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Asset Name</label>
@@ -286,6 +290,34 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
             </button>
           </div>
         </form>
+      )}
+
+      {/* History Timeline */}
+      {initialData && logs.length > 0 && (
+        <div className="mt-8 pt-8 border-t border-slate-200">
+            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <Clock size={20} /> Asset History
+            </h3>
+            <div className="space-y-6 relative before:absolute before:left-[19px] before:top-2 before:h-full before:w-[2px] before:bg-slate-100">
+                {logs.map((log) => (
+                    <div key={log.id} className="relative flex items-start gap-4">
+                        <div className={`z-10 w-10 h-10 rounded-full flex items-center justify-center border-4 border-white shadow-sm ${log.action === 'Created' ? 'bg-emerald-100 text-emerald-600' : log.action === 'Returned' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-600'}`}>
+                            <Circle size={12} fill="currentColor" />
+                        </div>
+                        <div className="flex-1 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                            <div className="flex justify-between items-start">
+                                <span className="font-semibold text-slate-800 text-sm">{log.action}</span>
+                                <span className="text-xs text-slate-400">{new Date(log.timestamp).toLocaleDateString()} {new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                            </div>
+                            <p className="text-sm text-slate-600 mt-1">{log.details}</p>
+                            <div className="flex items-center gap-1 mt-2 text-xs text-slate-400">
+                                <User size={12} /> {log.performedBy}
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
       )}
     </div>
   );

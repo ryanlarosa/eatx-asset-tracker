@@ -2,6 +2,43 @@
 export type AssetStatus = 'Active' | 'In Storage' | 'Under Repair' | 'Retired' | 'Lost/Stolen';
 export const ASSET_STATUSES: AssetStatus[] = ['Active', 'In Storage', 'Under Repair', 'Retired', 'Lost/Stolen'];
 
+export type UserRole = 'admin' | 'technician' | 'viewer';
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  role: UserRole;
+  displayName?: string;
+}
+
+export interface AssetLog {
+  id: string;
+  assetId: string;
+  action: 'Created' | 'Updated' | 'Assigned' | 'Returned' | 'Transferred' | 'Audit';
+  details: string;
+  performedBy: string;
+  timestamp: string;
+}
+
+export interface HandoverDocument {
+  id: string;
+  employeeName: string;
+  assets: { id: string; name: string; serialNumber: string }[];
+  signatureBase64: string;
+  date: string;
+  type: 'Handover' | 'Return';
+}
+
+export interface PendingHandover {
+  id: string;
+  employeeName: string;
+  assetIds: string[];
+  assetsSnapshot: { id: string; name: string; serialNumber: string }[];
+  createdAt: string;
+  createdBy: string;
+  status: 'Pending' | 'Completed';
+}
+
 export interface Asset {
   id: string;
   name: string;
@@ -21,20 +58,6 @@ export interface AppConfig {
   locations: string[];
 }
 
-export interface FirebaseConfig {
-  apiKey: string;
-  authDomain: string;
-  projectId: string;
-  storageBucket: string;
-  messagingSenderId: string;
-  appId: string;
-}
-
-export interface DatabaseSettings {
-  useFirebase: boolean;
-  firebaseConfig?: FirebaseConfig;
-}
-
 export interface AssetStats {
   totalValue: number;
   totalAssets: number;
@@ -43,15 +66,12 @@ export interface AssetStats {
   byCategory: { name: string; value: number }[];
 }
 
-export type ProjectStatus = 'Planning' | 'In Progress' | 'Completed';
-export type ProjectItemStatus = 'Pending' | 'Ordered' | 'Received';
-
 export interface ProjectItem {
   id: string;
   name: string;
   category: string;
   estimatedCost: number;
-  status: ProjectItemStatus;
+  status: 'Pending' | 'Ordered' | 'Received';
   dueDate: string;
 }
 
@@ -60,6 +80,6 @@ export interface Project {
   name: string;
   description: string;
   targetDate: string;
-  status: ProjectStatus;
+  status: 'Planning' | 'In Progress' | 'Completed';
   items: ProjectItem[];
 }
