@@ -18,8 +18,10 @@ const emptyAsset: Asset = {
   category: '',
   status: 'Active',
   location: '',
+  department: '',
   assignedEmployee: '',
   serialNumber: '',
+  supplier: '',
   purchaseDate: new Date().toISOString().split('T')[0],
   purchaseCost: 0,
   lastUpdated: ''
@@ -39,6 +41,7 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
   // Config state
   const [categories, setCategories] = useState<string[]>([]);
   const [locations, setLocations] = useState<string[]>([]);
+  const [departments, setDepartments] = useState<string[]>([]);
 
   // Check if AI is available in this environment
   const aiAvailable = isAiConfigured();
@@ -48,6 +51,7 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
         const config = await getAppConfig();
         setCategories(config.categories);
         setLocations(config.locations);
+        setDepartments(config.departments || []);
 
         if (initialData) {
             setFormData(initialData);
@@ -58,7 +62,8 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
                 ...emptyAsset,
                 id: `ast-${Math.random().toString(36).substr(2, 9)}`,
                 category: config.categories[0] || 'Other',
-                location: config.locations[0] || ''
+                location: config.locations[0] || '',
+                department: config.departments?.[0] || ''
             });
         }
     };
@@ -134,7 +139,7 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
             </label>
             <textarea
               className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-slate-900 min-h-[120px]"
-              placeholder="e.g., Assigned a new MacBook Air M2 to Sarah from HR today, approximate value 4500 AED. Also bought 3 Hikvision security cameras for the warehouse."
+              placeholder="e.g. Assigned a new MacBook Air M2 to Sarah from HR today, approximate value 4500 AED. Also bought 3 Hikvision security cameras for the warehouse from Jumbo Electronics."
               value={aiInput}
               onChange={(e) => setAiInput(e.target.value)}
             />
@@ -208,7 +213,7 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Location</label>
                <select
@@ -220,6 +225,20 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
                 <option value="" disabled>Select Location</option>
                 {locations.map(loc => (
                   <option key={loc} value={loc}>{loc}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Department</label>
+               <select
+                name="department"
+                value={formData.department || ''}
+                onChange={handleChange}
+                className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
+              >
+                <option value="">None</option>
+                {departments.map(d => (
+                  <option key={d} value={d}>{d}</option>
                 ))}
               </select>
             </div>
@@ -236,7 +255,18 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Supplier / Vendor</label>
+              <input
+                type="text"
+                name="supplier"
+                value={formData.supplier || ''}
+                onChange={handleChange}
+                className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
+                placeholder="e.g. Amazon, Jumbo"
+              />
+            </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Cost (AED)</label>
               <input

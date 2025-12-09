@@ -1,17 +1,18 @@
-
 import React, { useRef, useState, useEffect } from 'react';
-import { X, Check, Trash2, PenTool } from 'lucide-react';
+import { X, Check, PenTool } from 'lucide-react';
 
 interface HandoverModalProps {
   isOpen: boolean;
   employeeName: string;
   assets: { id: string; name: string; serialNumber: string }[];
+  type: 'Handover' | 'Return' | 'Transfer';
+  targetName?: string;
   onConfirm: (signature: string) => void;
   onCancel: () => void;
   isProcessing: boolean;
 }
 
-const HandoverModal: React.FC<HandoverModalProps> = ({ isOpen, employeeName, assets, onConfirm, onCancel, isProcessing }) => {
+const HandoverModal: React.FC<HandoverModalProps> = ({ isOpen, employeeName, assets, type, targetName, onConfirm, onCancel, isProcessing }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(false);
@@ -36,11 +37,9 @@ const HandoverModal: React.FC<HandoverModalProps> = ({ isOpen, employeeName, ass
     setIsDrawing(true);
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    
     const rect = canvas.getBoundingClientRect();
     const x = ('touches' in e) ? e.touches[0].clientX - rect.left : (e as React.MouseEvent).clientX - rect.left;
     const y = ('touches' in e) ? e.touches[0].clientY - rect.top : (e as React.MouseEvent).clientY - rect.top;
-    
     ctx.beginPath();
     ctx.moveTo(x, y);
   };
@@ -50,20 +49,15 @@ const HandoverModal: React.FC<HandoverModalProps> = ({ isOpen, employeeName, ass
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
     const rect = canvas.getBoundingClientRect();
     const x = ('touches' in e) ? e.touches[0].clientX - rect.left : (e as React.MouseEvent).clientX - rect.left;
     const y = ('touches' in e) ? e.touches[0].clientY - rect.top : (e as React.MouseEvent).clientY - rect.top;
-
     ctx.lineTo(x, y);
     ctx.stroke();
     setHasSignature(true);
   };
 
-  const stopDrawing = () => {
-    setIsDrawing(false);
-  };
-
+  const stopDrawing = () => setIsDrawing(false);
   const clearCanvas = () => {
     const canvas = canvasRef.current;
     if (canvas) {
@@ -76,9 +70,7 @@ const HandoverModal: React.FC<HandoverModalProps> = ({ isOpen, employeeName, ass
   };
 
   const handleSave = () => {
-    if (canvasRef.current) {
-      onConfirm(canvasRef.current.toDataURL());
-    }
+    if (canvasRef.current) onConfirm(canvasRef.current.toDataURL());
   };
 
   if (!isOpen) return null;
@@ -87,16 +79,23 @@ const HandoverModal: React.FC<HandoverModalProps> = ({ isOpen, employeeName, ass
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
         <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-           <h3 className="font-bold text-slate-800 flex items-center gap-2"><PenTool size={18}/> Asset Handover Form</h3>
+           <h3 className="font-bold text-slate-800 flex items-center gap-2"><PenTool size={18}/> {type} Acknowledgement</h3>
            <button onClick={onCancel} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
         </div>
         
         <div className="p-6 overflow-y-auto flex-1">
            <div className="mb-6">
-              <h4 className="font-bold text-lg text-slate-900 mb-1">Asset Handover Acknowledgment</h4>
+              <h4 className="font-bold text-lg text-slate-900 mb-1">
+                 {type === 'Return' ? 'Asset Return Form' : type === 'Transfer' ? 'Asset Transfer Form' : 'Asset Handover Form'}
+              </h4>
               <p className="text-sm text-slate-500">
-                I, <span className="font-bold text-slate-900">{employeeName}</span>, acknowledge receipt of the following company assets. 
-                I agree to maintain them in good condition and return them upon request or termination of employment.
+                {type === 'Return' ? (
+                   <>I, <span className="font-bold text-slate-900">{employeeName}</span>, confirm the return of the following company assets. I declare that these items are being returned in the condition they were issued, subject to normal wear and tear.</>
+                ) : type === 'Transfer' ? (
+                   <>I, <span className="font-bold text-slate-900">{employeeName}</span>, acknowledge the transfer of ownership of the following assets to <span className="font-bold text-slate-900">{targetName}</span>.</>
+                ) : (
+                   <>I, <span className="font-bold text-slate-900">{employeeName}</span>, acknowledge receipt of the following company assets.</>
+                )}
               </p>
            </div>
 
@@ -120,45 +119,18 @@ const HandoverModal: React.FC<HandoverModalProps> = ({ isOpen, employeeName, ass
            </div>
 
            <div className="mb-2">
-              <label className="block text-sm font-bold text-slate-700 mb-2">Employee Signature</label>
+              <label className="block text-sm font-bold text-slate-700 mb-2">Signature of {employeeName}</label>
               <div className="border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 touch-none relative">
-                 <canvas
-                    ref={canvasRef}
-                    width={600}
-                    height={200}
-                    className="w-full h-[200px] cursor-crosshair rounded-xl"
-                    onMouseDown={startDrawing}
-                    onMouseMove={draw}
-                    onMouseUp={stopDrawing}
-                    onMouseLeave={stopDrawing}
-                    onTouchStart={startDrawing}
-                    onTouchMove={draw}
-                    onTouchEnd={stopDrawing}
-                 />
-                 <button 
-                    onClick={clearCanvas}
-                    className="absolute top-2 right-2 p-2 bg-white shadow-sm border border-slate-200 rounded-lg text-slate-500 hover:text-red-600 text-xs font-medium"
-                 >
-                    Clear
-                 </button>
-                 {!hasSignature && (
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-slate-300 text-sm">
-                       Sign here
-                    </div>
-                 )}
+                 <canvas ref={canvasRef} width={600} height={200} className="w-full h-[200px] cursor-crosshair rounded-xl" onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing} onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing} />
+                 <button onClick={clearCanvas} className="absolute top-2 right-2 p-2 bg-white shadow-sm border border-slate-200 rounded-lg text-slate-500 hover:text-red-600 text-xs font-medium">Clear</button>
+                 {!hasSignature && <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-slate-300 text-sm">Sign here</div>}
               </div>
            </div>
         </div>
 
         <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
            <button onClick={onCancel} className="px-4 py-2 border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-100 font-medium">Cancel</button>
-           <button 
-              onClick={handleSave} 
-              disabled={!hasSignature || isProcessing}
-              className="px-6 py-2 bg-slate-900 text-white rounded-lg hover:bg-black disabled:opacity-50 font-medium flex items-center gap-2"
-           >
-              {isProcessing ? 'Saving...' : <>Confirm & Assign <Check size={16}/></>}
-           </button>
+           <button onClick={handleSave} disabled={!hasSignature || isProcessing} className="px-6 py-2 bg-slate-900 text-white rounded-lg hover:bg-black disabled:opacity-50 font-medium flex items-center gap-2">{isProcessing ? 'Saving...' : <>Confirm <Check size={16}/></>}</button>
         </div>
       </div>
     </div>

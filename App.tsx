@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { HashRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
-import { LayoutDashboard, List, PlusCircle, MonitorSmartphone, CalendarCheck, Settings as SettingsIcon, LogOut, Loader2, Lock, Shield, CheckCircle, XCircle, Users } from 'lucide-react';
+import { HashRouter as Router, Routes, Route, Link, useLocation, Navigate, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, List, PlusCircle, MonitorSmartphone, CalendarCheck, Settings as SettingsIcon, LogOut, Loader2, Lock, Shield, CheckCircle, XCircle, Users, Wrench, ShoppingBag, Receipt } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import AssetList from './components/AssetList';
 import AssetForm from './components/AssetForm';
@@ -9,7 +9,12 @@ import Planner from './components/Planner';
 import Settings from './components/Settings';
 import StaffView from './components/StaffView';
 import SignHandover from './components/SignHandover';
-import { Asset, AssetStatus } from './types';
+import RepairTickets from './components/RepairTickets';
+import AssetRequests from './components/AssetRequests';
+import PublicReportIssue from './components/PublicReportIssue';
+import PublicAssetRequest from './components/PublicAssetRequest';
+import Invoices from './components/Invoices';
+import { Asset, AssetStatus, UserRole } from './types';
 import { getAssets, saveAsset, deleteAsset, getStats, getOverdueItems, subscribeToAuth, loginUser, logoutUser, getCurrentUserProfile, checkEnvStatus } from './services/storageService';
 
 const Sidebar = ({ notificationCount, onLogout }: { notificationCount: number, onLogout: () => void }) => {
@@ -36,6 +41,9 @@ const Sidebar = ({ notificationCount, onLogout }: { notificationCount: number, o
       <nav className="flex-1 p-4 space-y-2">
         <Link to="/" className={linkClass('/')}><LayoutDashboard size={20} /> Dashboard</Link>
         <Link to="/assets" className={linkClass('/assets')}><List size={20} /> Asset Registry</Link>
+        <Link to="/requests" className={linkClass('/requests')}><ShoppingBag size={20} /> Requests</Link>
+        <Link to="/repairs" className={linkClass('/repairs')}><Wrench size={20} /> Repairs</Link>
+        <Link to="/invoices" className={linkClass('/invoices')}><Receipt size={20} /> Invoices</Link>
         {canEdit && <Link to="/staff" className={linkClass('/staff')}><Users size={20} /> Staff & Audit</Link>}
         <Link to="/planner" className={linkClass('/planner')}>
            <div className="flex items-center justify-between w-full">
@@ -71,7 +79,11 @@ const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
         try {
             await loginUser(email, password);
         } catch (err: any) {
-            setError("Login failed. Check credentials.");
+            if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
+                setError("Invalid email or password.");
+            } else {
+                setError("Login failed. Check your credentials.");
+            }
         } finally {
             setLoading(false);
         }
@@ -96,113 +108,179 @@ const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
                     <div><label className="block text-sm font-medium text-slate-700 mb-1">Email</label><input type="email" required className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900" value={email} onChange={e => setEmail(e.target.value)} /></div>
                     <div><label className="block text-sm font-medium text-slate-700 mb-1">Password</label><input type="password" required className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900" value={password} onChange={e => setPassword(e.target.value)} /></div>
                     {error && <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg flex items-center gap-2"><Lock size={14} /> {error}</div>}
-                    <button type="submit" disabled={loading || !envStatus.ok} className="w-full bg-slate-900 text-white py-3 rounded-lg font-bold hover:bg-black transition-all flex justify-center items-center gap-2 disabled:opacity-50">{loading ? <Loader2 className="animate-spin" /> : 'Login'}</button>
+                    
+                    <button type="submit" disabled={loading || !envStatus.ok} className="w-full bg-slate-900 text-white py-3 rounded-lg font-bold hover:bg-black transition-all flex justify-center items-center gap-2 disabled:opacity-50">
+                        {loading ? <Loader2 className="animate-spin" /> : 'Login'}
+                    </button>
+                    
+                    <div className="text-center text-xs text-slate-400 mt-4">
+                        Authorized Personnel Only
+                    </div>
                 </form>
             </div>
         </div>
     );
 };
 
-const AppContent = () => {
+const ProtectedRoute = ({ children, requiredRole }: { children?: React.ReactNode, requiredRole?: UserRole }) => {
+    const user = getCurrentUserProfile();
+    
+    if (!user) {
+        return <Navigate to="/" replace />;
+    }
+
+    if (requiredRole && user.role !== requiredRole && user.role !== 'admin') {
+         return <div className="p-8 text-center text-slate-500">Access Denied. You do not have permission to view this page.</div>;
+    }
+
+    return <>{children}</>;
+};
+
+const App = () => {
   const [assets, setAssets] = useState<Asset[]>([]);
-  const [stats, setStats] = useState(getStats([]));
+  const [loading, setLoading] = useState(true);
+  const [notificationCount, setNotificationCount] = useState(0);
+  const [view, setView] = useState<'list' | 'form'>('list');
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const [user, setUser] = useState<any>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const location = useLocation();
+  const [user, setUser] = useState(getCurrentUserProfile());
 
   useEffect(() => {
-     const unsubscribe = subscribeToAuth((u) => {
-         setUser(u);
-         setAuthLoading(false);
-         if (u) refreshData();
-     });
-     return () => unsubscribe();
+    const unsubscribe = subscribeToAuth((u) => {
+        setUser(u);
+    });
+    return () => unsubscribe();
   }, []);
 
   const refreshData = async () => {
-    try {
-      const data = await getAssets();
-      setAssets(data);
-      setStats(getStats(data));
-      setNotifications(await getOverdueItems());
-    } catch (e) {
-      console.error("Failed to load data", e);
-    }
+    setLoading(true);
+    const data = await getAssets();
+    setAssets(data);
+    const overdue = await getOverdueItems();
+    setNotificationCount(overdue.length);
+    setLoading(false);
   };
 
-  const handleSave = async (asset: Asset) => {
+  useEffect(() => {
+    if (user) {
+        refreshData();
+    }
+  }, [user]);
+
+  const handleSaveAsset = async (asset: Asset) => {
     await saveAsset(asset);
     await refreshData();
-    window.location.hash = '#/assets'; 
+    setView('list');
     setEditingAsset(null);
   };
 
-  const handleDelete = async (id: string) => {
-    await deleteAsset(id);
-    await refreshData();
-  };
-
-  const handleEdit = (asset: Asset) => {
-    setEditingAsset(asset);
-    window.location.hash = '#/onboard';
+  const handleDeleteAsset = async (id: string) => {
+    try {
+        await deleteAsset(id);
+        await refreshData();
+    } catch (error) {
+        console.error("Delete failed", error);
+    }
   };
 
   const handleDuplicate = (asset: Asset) => {
-      const newId = 'ast-' + Math.random().toString(36).substr(2, 9);
-      const copy: Asset = {
-          ...asset,
-          id: newId,
-          name: `${asset.name} (Copy)`,
-          serialNumber: '', 
-          assignedEmployee: '', 
-          status: 'Active' as AssetStatus, 
-          lastUpdated: new Date().toISOString()
-      };
-      setEditingAsset(copy);
-      window.location.hash = '#/onboard';
+    const copy: Asset = {
+        ...asset,
+        id: '', // Will be generated
+        name: `${asset.name} (Copy)`,
+        serialNumber: '', // Clear unique fields
+        assignedEmployee: '',
+        lastUpdated: ''
+    };
+    setEditingAsset(copy);
+    setView('form');
   };
 
-  const handleLogout = async () => {
-      await logoutUser();
-  };
-
-  // Auth Guard
-  const isPublicRoute = location.pathname.startsWith('/sign/');
-  
-  if (authLoading) return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><Loader2 className="animate-spin text-slate-900" size={48} /></div>;
-  if (!user && !isPublicRoute) return <LoginScreen onLogin={() => {}} />;
-
-  // Public Layout (Signing)
-  if (isPublicRoute) {
-      return (
-          <Routes>
-              <Route path="/sign/:id" element={<SignHandover />} />
-          </Routes>
-      );
+  if (!user) {
+    return (
+        <Router>
+             <Routes>
+                <Route path="/sign/:id" element={<SignHandover />} />
+                <Route path="/report-issue" element={<PublicReportIssue />} />
+                <Route path="/request-asset" element={<PublicAssetRequest />} />
+                <Route path="*" element={<LoginScreen onLogin={() => {}} />} />
+             </Routes>
+        </Router>
+    );
   }
 
-  // Protected Layout
+  const canEdit = user.role === 'admin' || user.role === 'technician';
+
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row">
-      <Sidebar notificationCount={notifications.length} onLogout={handleLogout} />
-      <div className="flex-1 md:ml-64 flex flex-col min-h-screen">
-        <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full">
-          <Routes>
-            <Route path="/" element={<div className="space-y-6 animate-fade-in"><header className="mb-8"><h1 className="text-2xl md:text-3xl font-bold text-slate-800">Overview</h1></header><Dashboard stats={stats} allAssets={assets} /></div>} />
-            <Route path="/assets" element={<div className="space-y-6 animate-fade-in"><header className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4"><div><h1 className="text-2xl md:text-3xl font-bold text-slate-800">Asset Registry</h1></div>{user.role !== 'viewer' && <Link to="/onboard" onClick={() => setEditingAsset(null)} className="bg-slate-900 text-white px-5 py-2.5 rounded-lg shadow-md hover:bg-black transition-colors font-medium flex items-center justify-center gap-2"><PlusCircle size={18} /> Add New</Link>}</header><AssetList assets={assets} onEdit={handleEdit} onDuplicate={handleDuplicate} onDelete={handleDelete} onRefresh={refreshData} /></div>} />
-            <Route path="/planner" element={<div className="animate-fade-in"><Planner /></div>} />
-            <Route path="/staff" element={<div className="animate-fade-in"><StaffView /></div>} />
-            <Route path="/onboard" element={<div className="max-w-3xl mx-auto animate-fade-in"><header className="mb-8"><h1 className="text-2xl md:text-3xl font-bold text-slate-800">{editingAsset ? 'Manage Asset' : 'Onboard Asset'}</h1></header><AssetForm initialData={editingAsset} onSave={handleSave} onCancel={() => { setEditingAsset(null); window.location.hash = '#/assets'; }} /></div>} />
-            <Route path="/settings" element={user.role === 'admin' ? <div className="animate-fade-in"><Settings /></div> : <Navigate to="/" />} />
-          </Routes>
-        </main>
+    <Router>
+      <div className="flex min-h-screen bg-slate-50 text-slate-900 font-sans">
+        <Routes>
+            <Route path="/sign/:id" element={<SignHandover />} />
+            <Route path="/report-issue" element={<PublicReportIssue />} />
+            <Route path="/request-asset" element={<PublicAssetRequest />} />
+            
+            <Route path="/*" element={
+                <>
+                <Sidebar notificationCount={notificationCount} onLogout={() => logoutUser()} />
+                <main className="flex-1 md:ml-64 p-4 md:p-8 overflow-y-auto h-screen">
+                    <Routes>
+                        <Route path="/" element={<Dashboard stats={getStats(assets)} allAssets={assets} />} />
+                        <Route path="/assets" element={
+                            view === 'list' ? (
+                                <div className="space-y-6">
+                                    <div className="flex justify-between items-center">
+                                        <h1 className="text-2xl font-bold text-slate-800">Asset Registry</h1>
+                                        {canEdit && (
+                                            <button 
+                                                onClick={() => { setEditingAsset(null); setView('form'); }} 
+                                                className="bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-black flex items-center gap-2 font-medium shadow-sm transition-all"
+                                            >
+                                                <PlusCircle size={20} /> Add Asset
+                                            </button>
+                                        )}
+                                    </div>
+                                    {loading ? (
+                                        <div className="flex justify-center p-12"><Loader2 className="animate-spin text-slate-400" size={32} /></div>
+                                    ) : (
+                                        <AssetList 
+                                            assets={assets} 
+                                            onEdit={(a) => { setEditingAsset(a); setView('form'); }} 
+                                            onDuplicate={handleDuplicate}
+                                            onDelete={handleDeleteAsset} 
+                                            onRefresh={refreshData} 
+                                        />
+                                    )}
+                                </div>
+                            ) : (
+                                <AssetForm 
+                                    initialData={editingAsset} 
+                                    onSave={handleSaveAsset} 
+                                    onCancel={() => { setView('list'); setEditingAsset(null); }} 
+                                />
+                            )
+                        } />
+                        <Route path="/requests" element={<AssetRequests />} />
+                        <Route path="/repairs" element={<RepairTickets />} />
+                        <Route path="/invoices" element={<Invoices />} />
+                        <Route path="/planner" element={<Planner />} />
+                        <Route path="/staff" element={
+                            <ProtectedRoute requiredRole="technician">
+                                <StaffView />
+                            </ProtectedRoute>
+                        } />
+                        <Route path="/settings" element={
+                            <ProtectedRoute requiredRole="admin">
+                                <Settings />
+                            </ProtectedRoute>
+                        } />
+                        <Route path="*" element={<Navigate to="/" replace />} />
+                    </Routes>
+                </main>
+                </>
+            } />
+        </Routes>
       </div>
-      <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } } .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }`}</style>
-    </div>
+    </Router>
   );
 };
 
-const App = () => <Router><AppContent /></Router>;
 export default App;

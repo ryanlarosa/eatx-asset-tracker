@@ -39,6 +39,7 @@ export const parseAssetDescription = async (text: string): Promise<Partial<any>>
     - Match 'location' to the closest value in the list above.
     - If cost is missing, estimate a reasonable market price in AED (United Arab Emirates Dirham).
     - Extract 'assignedEmployee' if mentioned.
+    - Extract 'supplier' or 'vendor' if mentioned (e.g. bought from Amazon).
     
     Input Text: "${text}"
   `;
@@ -59,6 +60,7 @@ export const parseAssetDescription = async (text: string): Promise<Partial<any>>
             location: { type: Type.STRING, description: "One of the configured locations" },
             assignedEmployee: { type: Type.STRING, description: "Name of employee assigned" },
             serialNumber: { type: Type.STRING, description: "Serial number if mentioned" },
+            supplier: { type: Type.STRING, description: "Vendor or supplier name" },
             purchaseCost: { type: Type.NUMBER, description: "Cost in AED" },
             purchaseDate: { type: Type.STRING, description: "ISO Date YYYY-MM-DD" },
           },

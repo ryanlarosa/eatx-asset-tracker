@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Asset, ASSET_STATUSES, AssetStatus } from '../types';
-import { Edit2, Trash2, Search, MapPin, Tag, User, Upload, Download, FileSpreadsheet, Loader2, AlertTriangle, X, Lock, Copy } from 'lucide-react';
+import { Edit2, Trash2, Search, MapPin, Tag, User, Upload, Download, FileSpreadsheet, Loader2, AlertTriangle, X, Lock, Copy, Building2, ShoppingCart } from 'lucide-react';
 import { importAssetsFromCSV, getAppConfig, getCurrentUserProfile } from '../services/storageService';
 
 interface AssetListProps {
@@ -51,7 +51,8 @@ const AssetList: React.FC<AssetListProps> = ({ assets, onEdit, onDuplicate, onDe
 
   const filteredAssets = assets.filter(asset => {
     const matchesSearch = asset.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          asset.description?.toLowerCase().includes(searchTerm.toLowerCase());
+                          asset.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (asset.supplier && asset.supplier.toLowerCase().includes(searchTerm.toLowerCase()));
     
     const matchesStatus = filterStatus === 'All' || asset.status === filterStatus;
     const matchesCategory = filterCategory === 'All' || asset.category === filterCategory;
@@ -100,6 +101,7 @@ const AssetList: React.FC<AssetListProps> = ({ assets, onEdit, onDuplicate, onDe
                     serialNumber: cols[6]?.trim() || '',
                     assignedEmployee: cols[7]?.trim() || '',
                     description: cols[8]?.trim() || 'Imported from CSV',
+                    supplier: cols[9]?.trim() || '',
                     lastUpdated: new Date().toISOString()
                 });
             }
@@ -125,7 +127,7 @@ const AssetList: React.FC<AssetListProps> = ({ assets, onEdit, onDuplicate, onDe
          <div className="flex flex-col md:flex-row justify-between gap-4">
             <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 text-sm" />
+                <input type="text" placeholder="Search name, supplier, details..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 text-sm" />
             </div>
             {canEdit && (
             <div className="flex gap-2">
@@ -153,9 +155,9 @@ const AssetList: React.FC<AssetListProps> = ({ assets, onEdit, onDuplicate, onDe
             <tr className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider font-semibold border-b border-slate-200">
               <th className="p-4">Asset</th>
               <th className="p-4">Category</th>
-              <th className="p-4">Details</th>
+              <th className="p-4">Location & Dept</th>
+              <th className="p-4">Assigned To</th>
               <th className="p-4">Status</th>
-              <th className="p-4">Cost</th>
               <th className="p-4 text-right">Actions</th>
             </tr>
           </thead>
@@ -164,18 +166,30 @@ const AssetList: React.FC<AssetListProps> = ({ assets, onEdit, onDuplicate, onDe
               <tr key={asset.id} className="hover:bg-slate-50 transition-colors">
                 <td className="p-4">
                   <div className="font-semibold text-slate-900">{asset.name}</div>
-                  <div className="text-xs text-slate-500 truncate max-w-[180px]">{asset.description}</div>
+                  <div className="flex items-center gap-2 mt-1">
+                      {asset.supplier && (
+                          <span className="text-xs font-medium text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded">
+                              <ShoppingCart size={10} /> {asset.supplier}
+                          </span>
+                      )}
+                      <span className="text-xs text-slate-400 font-mono">{asset.serialNumber}</span>
+                  </div>
+                  <div className="text-xs text-slate-500 truncate max-w-[180px] mt-1">{asset.description}</div>
                 </td>
                 <td className="p-4"><div className="flex items-center gap-1.5 text-xs font-medium px-2 py-1 bg-slate-100 rounded-md w-fit text-slate-700"><Tag size={12} /> {asset.category}</div></td>
                 <td className="p-4">
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-1.5 text-sm text-slate-600"><MapPin size={14} /> {asset.location}</div>
-                    {asset.assignedEmployee && <div className="flex items-center gap-1.5 text-xs text-slate-800 font-medium bg-slate-100 px-1.5 py-0.5 rounded w-fit"><User size={12} /> {asset.assignedEmployee}</div>}
-                    {asset.serialNumber && <div className="text-xs text-slate-400 font-mono">SN: {asset.serialNumber}</div>}
+                    {asset.department && <div className="flex items-center gap-1.5 text-xs text-slate-500"><Building2 size={12} /> {asset.department}</div>}
                   </div>
                 </td>
+                <td className="p-4">
+                    {asset.assignedEmployee ? 
+                        <div className="flex items-center gap-1.5 text-xs text-slate-800 font-medium bg-slate-100 px-1.5 py-0.5 rounded w-fit"><User size={12} /> {asset.assignedEmployee}</div> : 
+                        <span className="text-slate-400 text-xs">-</span>
+                    }
+                </td>
                 <td className="p-4"><span className={`px-2.5 py-1 rounded-full text-xs font-bold ${getStatusColor(asset.status)}`}>{asset.status}</span></td>
-                <td className="p-4 text-sm font-medium text-slate-700">AED {asset.purchaseCost.toLocaleString()}</td>
                 <td className="p-4 text-right">
                   <div className="flex justify-end gap-2">
                     {canEdit ? (
@@ -193,7 +207,6 @@ const AssetList: React.FC<AssetListProps> = ({ assets, onEdit, onDuplicate, onDe
                         <Trash2 size={16} />
                       </button>
                     ) : null}
-                    {/* If neither, show nothing or lock */}
                     {!canEdit && !canDelete && <span className="p-2 text-slate-300 cursor-not-allowed"><Lock size={16} /></span>}
                   </div>
                 </td>

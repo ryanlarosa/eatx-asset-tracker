@@ -14,10 +14,12 @@ export interface UserProfile {
 export interface AssetLog {
   id: string;
   assetId: string;
-  action: 'Created' | 'Updated' | 'Assigned' | 'Returned' | 'Transferred' | 'Audit';
+  action: 'Created' | 'Updated' | 'Assigned' | 'Returned' | 'Transferred' | 'Audit' | 'Ticket' | 'Replaced' | 'Retired';
   details: string;
   performedBy: string;
   timestamp: string;
+  documentId?: string; // Link to the signed PDF/Image
+  ticketId?: string;
 }
 
 export interface HandoverDocument {
@@ -26,7 +28,7 @@ export interface HandoverDocument {
   assets: { id: string; name: string; serialNumber: string }[];
   signatureBase64: string;
   date: string;
-  type: 'Handover' | 'Return';
+  type: 'Handover' | 'Return' | 'Transfer';
 }
 
 export interface PendingHandover {
@@ -39,6 +41,51 @@ export interface PendingHandover {
   status: 'Pending' | 'Completed';
 }
 
+export interface IncidentReport {
+  id: string;
+  ticketNumber: string;
+  assetId?: string;
+  assetName: string; // Fallback if asset is generic or not in system
+  deviceType?: string; // e.g. Laptop, iPad
+  reportedSerial?: string; // Optional user input
+  imageBase64?: string; // Evidence photo
+  location: string;
+  reportedBy: string; // Staff name
+  description: string;
+  priority: 'Low' | 'Medium' | 'High' | 'Critical';
+  status: 'New' | 'Open' | 'In Progress' | 'Waiting for Parts' | 'Resolved' | 'Rejected';
+  createdAt: string;
+  resolvedAt?: string;
+  resolutionNotes?: string;
+}
+
+export interface AssetRequest {
+  id: string;
+  requestNumber: string;
+  requesterName: string;
+  department: string;
+  category: string; // What they want (e.g. Laptop)
+  urgency: 'Low' | 'Medium' | 'High';
+  reason: string;
+  status: 'New' | 'Approved' | 'Fulfilled' | 'Rejected';
+  createdAt: string;
+  resolvedAt?: string;
+  resolutionNotes?: string;
+  linkedAssetId?: string; // If fulfilled with specific asset
+}
+
+export interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  vendor: string;
+  date: string;
+  amount: number;
+  fileBase64?: string;
+  fileName?: string;
+  linkedAssetIds: string[];
+  createdAt: string;
+}
+
 export interface Asset {
   id: string;
   name: string;
@@ -46,8 +93,10 @@ export interface Asset {
   category: string;
   status: AssetStatus;
   location: string;
+  department?: string;
   assignedEmployee?: string;
   serialNumber: string;
+  supplier?: string;
   purchaseDate: string;
   purchaseCost: number;
   lastUpdated: string;
@@ -56,6 +105,7 @@ export interface Asset {
 export interface AppConfig {
   categories: string[];
   locations: string[];
+  departments: string[];
 }
 
 export interface AssetStats {

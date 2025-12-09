@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { Asset, UserProfile, HandoverDocument } from '../types';
 import { getAssets, bulkAssignAssets, bulkReturnAssets, bulkTransferAssets, getCurrentUserProfile, saveHandoverDocument, getHandoverDocuments, createPendingHandover } from '../services/storageService';
-import { Briefcase, Archive, ArrowRight, CheckCircle, Search, Laptop, Smartphone, Monitor, User as UserIcon, AlertTriangle, X, FileText, Download, Link as LinkIcon, Mail } from 'lucide-react';
+import { Briefcase, Archive, ArrowRight, CheckCircle, Search, Laptop, Smartphone, Monitor, User as UserIcon, AlertTriangle, X, FileText, Download, Link as LinkIcon, Mail, Printer } from 'lucide-react';
+import HandoverModal from './HandoverModal';
 
 const StaffView: React.FC = () => {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -18,14 +19,14 @@ const StaffView: React.FC = () => {
   // Link Modal State
   const [linkModal, setLinkModal] = useState<{ open: boolean, link: string, name: string }>({ open: false, link: '', name: '' });
 
-  // Confirmation Modal State
-  const [confirmModal, setConfirmModal] = useState<{
+  // Signature Modal State
+  const [signModal, setSignModal] = useState<{
     isOpen: boolean;
-    title: string;
-    message: string;
-    action: () => Promise<void>;
-    type: 'warning' | 'info';
-  }>({ isOpen: false, title: '', message: '', action: async () => {}, type: 'info' });
+    type: 'Handover' | 'Return' | 'Transfer';
+    employeeName: string;
+    targetName?: string;
+    assets: Asset[];
+  }>({ isOpen: false, type: 'Handover', employeeName: '', assets: [] });
 
   const currentUser = getCurrentUserProfile();
   const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'technician';
@@ -108,51 +109,166 @@ const StaffView: React.FC = () => {
     }
   };
 
-  const triggerReturn = () => {
-      if (selectedAssetIds.size === 0) return;
-      setConfirmModal({
+  const handleReturnClick = () => {
+      if (selectedAssetIds.size === 0 || !selectedEmployee) return;
+      setSignModal({
           isOpen: true,
-          title: 'Return to Storage',
-          message: `Are you sure you want to return ${selectedAssetIds.size} assets from ${selectedEmployee} to storage? This will clear the assignment.`,
-          type: 'warning',
-          action: async () => {
-              setIsProcessing(true);
-              await bulkReturnAssets(Array.from(selectedAssetIds));
-              await refreshAssets();
-              setSuccessMsg(`Successfully returned ${selectedAssetIds.size} assets.`);
-              setIsProcessing(false);
-              setConfirmModal(prev => ({ ...prev, isOpen: false }));
-              if (selectedAssetIds.size === filteredAssets.length) {
-                  setSelectedEmployee(null); 
-              }
-              setSelectedAssetIds(new Set());
-              setTimeout(() => setSuccessMsg(''), 4000);
-          }
+          type: 'Return',
+          employeeName: selectedEmployee,
+          assets: assets.filter(a => selectedAssetIds.has(a.id))
       });
   };
 
-  const triggerTransfer = () => {
-      if (selectedAssetIds.size === 0 || !targetEmployee) return;
-      setConfirmModal({
+  const handleTransferClick = () => {
+      if (selectedAssetIds.size === 0 || !selectedEmployee || !targetEmployee) return;
+      setSignModal({
           isOpen: true,
-          title: 'Transfer Assets',
-          message: `Transfer ${selectedAssetIds.size} assets from ${selectedEmployee} to ${targetEmployee}?`,
-          type: 'info',
-          action: async () => {
-              setIsProcessing(true);
-              await bulkTransferAssets(Array.from(selectedAssetIds), targetEmployee);
-              await refreshAssets();
-              setSuccessMsg(`Successfully transferred assets to ${targetEmployee}`);
-              setIsProcessing(false);
-              setConfirmModal(prev => ({ ...prev, isOpen: false }));
-              setTargetEmployee('');
-              setSelectedAssetIds(new Set());
-              if (selectedAssetIds.size === filteredAssets.length) {
-                  setSelectedEmployee(null);
-              }
-              setTimeout(() => setSuccessMsg(''), 4000);
-          }
+          type: 'Transfer',
+          employeeName: selectedEmployee,
+          targetName: targetEmployee,
+          assets: assets.filter(a => selectedAssetIds.has(a.id))
       });
+  };
+
+  const handleSignatureConfirm = async (signature: string) => {
+      setIsProcessing(true);
+      try {
+          const docData: HandoverDocument = {
+              id: 'doc-' + Math.random().toString(36).substr(2, 9),
+              employeeName: signModal.employeeName,
+              assets: signModal.assets.map(a => ({ id: a.id, name: a.name, serialNumber: a.serialNumber })),
+              signatureBase64: signature,
+              date: new Date().toISOString(),
+              type: signModal.type
+          };
+          
+          await saveHandoverDocument(docData);
+
+          const assetIds = signModal.assets.map(a => a.id);
+
+          if (signModal.type === 'Return') {
+              await bulkReturnAssets(assetIds, docData.id);
+              setSuccessMsg(`Successfully returned ${assetIds.length} assets.`);
+          } else if (signModal.type === 'Transfer' && signModal.targetName) {
+              await bulkTransferAssets(assetIds, signModal.targetName, docData.id);
+              setSuccessMsg(`Successfully transferred assets to ${signModal.targetName}`);
+          }
+
+          await refreshAssets();
+          setSignModal({ ...signModal, isOpen: false });
+          setSelectedAssetIds(new Set());
+          setTargetEmployee('');
+          if (selectedAssetIds.size === filteredAssets.length) {
+             setSelectedEmployee(null);
+          }
+          setTimeout(() => setSuccessMsg(''), 4000);
+      } catch (e) {
+          alert("Error processing handover.");
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
+  const handlePrintDocument = (doc: HandoverDocument) => {
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) return;
+
+      const dateStr = new Date(doc.date).toLocaleDateString('en-GB', {
+          day: 'numeric', month: 'long', year: 'numeric'
+      });
+      
+      const title = doc.type === 'Return' ? 'ASSET RETURN FORM' 
+                  : doc.type === 'Transfer' ? 'ASSET TRANSFER ACKNOWLEDGEMENT'
+                  : 'ASSET HANDOVER FORM';
+
+      const declaration = doc.type === 'Return' 
+        ? `I, <b>${doc.employeeName}</b>, confirm the return of the following company assets. I declare that these items are being returned in the condition they were issued, subject to normal wear and tear.`
+        : `I, <b>${doc.employeeName}</b>, acknowledge receipt/transfer of the following company assets. I agree to use them for company business and maintain them in good condition.`;
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>${title} - ${doc.employeeName}</title>
+            <style>
+                body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #111; max-width: 800px; margin: 0 auto; }
+                .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 20px; margin-bottom: 30px; }
+                .logo { font-size: 24px; font-weight: bold; letter-spacing: 1px; margin-bottom: 5px; }
+                .title { font-size: 18px; font-weight: bold; color: #444; }
+                .meta { margin-bottom: 30px; }
+                .meta-row { display: flex; justify-content: space-between; margin-bottom: 10px; }
+                .declaration { margin-bottom: 20px; line-height: 1.5; background: #f9f9f9; padding: 15px; border-radius: 4px; border-left: 4px solid #333; }
+                table { width: 100%; border-collapse: collapse; margin-bottom: 40px; }
+                th { background: #eee; text-align: left; padding: 10px; border: 1px solid #ccc; font-size: 12px; text-transform: uppercase; }
+                td { padding: 10px; border: 1px solid #ccc; font-size: 14px; }
+                .footer { margin-top: 60px; page-break-inside: avoid; }
+                .signature-box { border-top: 1px solid #ccc; padding-top: 10px; width: 250px; }
+                .signature-img { max-height: 80px; display: block; margin-bottom: 10px; }
+                .timestamp { font-size: 10px; color: #666; margin-top: 5px; font-family: monospace; }
+                @media print {
+                    body { padding: 0; }
+                    .no-print { display: none; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <div class="logo">EATX IT</div>
+                <div class="title">${title}</div>
+            </div>
+
+            <div class="meta">
+                <div class="meta-row">
+                    <strong>Employee Name:</strong> <span>${doc.employeeName}</span>
+                </div>
+                <div class="meta-row">
+                    <strong>Transaction Date:</strong> <span>${dateStr}</span>
+                </div>
+                <div class="meta-row">
+                    <strong>Document ID:</strong> <span style="font-family: monospace">${doc.id}</span>
+                </div>
+            </div>
+
+            <div class="declaration">
+                ${declaration}
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th width="50">#</th>
+                        <th>Asset Name</th>
+                        <th width="150">Serial Number</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${doc.assets.map((a, i) => `
+                        <tr>
+                            <td>${i + 1}</td>
+                            <td>${a.name}</td>
+                            <td style="font-family: monospace">${a.serialNumber || 'N/A'}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+
+            <div class="footer">
+                <div class="signature-box">
+                    <img src="${doc.signatureBase64}" class="signature-img" alt="Digital Signature" />
+                    <div><strong>Signed by:</strong> ${doc.employeeName}</div>
+                    <div class="timestamp">Digitally Signed: ${new Date(doc.date).toLocaleString()}</div>
+                </div>
+            </div>
+            
+            <script>
+                window.onload = function() { window.print(); }
+            </script>
+        </body>
+        </html>
+      `;
+
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
   };
 
   if (!canEdit) {
@@ -268,11 +384,11 @@ const StaffView: React.FC = () => {
                 <div className="space-y-3">
                     <div className={`transition-opacity ${!selectedEmployee ? 'opacity-50 pointer-events-none' : ''}`}>
                         <button 
-                            onClick={triggerReturn}
+                            onClick={handleReturnClick}
                             disabled={selectedAssetIds.size === 0 || isProcessing}
                             className="w-full bg-slate-100 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-200 disabled:opacity-50 flex justify-center items-center gap-2 border border-slate-200"
                         >
-                            <Archive size={16} /> Return to Storage
+                            <Archive size={16} /> Sign & Return
                         </button>
                         
                         <div className="relative flex py-2 items-center">
@@ -289,11 +405,11 @@ const StaffView: React.FC = () => {
                             className="w-full p-2 border border-slate-300 rounded-lg mb-2 text-sm"
                         />
                         <button 
-                            onClick={triggerTransfer}
+                            onClick={handleTransferClick}
                             disabled={selectedAssetIds.size === 0 || !targetEmployee || isProcessing}
                             className="w-full bg-slate-800 text-white py-2 rounded-lg font-medium hover:bg-slate-900 disabled:opacity-50 flex justify-center items-center gap-2"
                         >
-                            Transfer <ArrowRight size={16} />
+                            Sign & Transfer <ArrowRight size={16} />
                         </button>
                         </div>
                     </div>
@@ -376,10 +492,13 @@ const StaffView: React.FC = () => {
                             <div className="font-bold text-slate-800">{doc.employeeName}</div>
                             <div className="text-xs text-slate-500">{new Date(doc.date).toLocaleDateString()} at {new Date(doc.date).toLocaleTimeString()}</div>
                         </div>
-                        <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-md font-medium">{doc.type}</span>
+                        <div className="flex flex-col items-end gap-1">
+                             <span className={`text-xs px-2 py-1 rounded-md font-medium ${doc.type === 'Return' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{doc.type}</span>
+                             <button onClick={() => handlePrintDocument(doc)} className="text-xs flex items-center gap-1 text-slate-500 hover:text-slate-900"><Printer size={12}/> Print / PDF</button>
+                        </div>
                     </div>
                     <div className="p-4">
-                        <div className="text-xs text-slate-400 uppercase font-bold mb-2">Assets Included</div>
+                        <div className="text-xs text-slate-400 uppercase font-bold mb-2">Assets {doc.type === 'Return' ? 'Returned' : 'Handed Over'}</div>
                         <div className="space-y-1 mb-4">
                             {doc.assets.slice(0, 3).map(a => (
                                 <div key={a.id} className="text-sm text-slate-700 flex justify-between">
@@ -404,37 +523,17 @@ const StaffView: React.FC = () => {
         </div>
       )}
 
-      {/* Confirmation Modal */}
-      {confirmModal.isOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-              <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 border border-slate-100">
-                  <div className="flex flex-col items-center text-center gap-4">
-                      <div className={`p-3 rounded-full ${confirmModal.type === 'warning' ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600'}`}>
-                          {confirmModal.type === 'warning' ? <AlertTriangle size={32} /> : <CheckCircle size={32} />}
-                      </div>
-                      <div>
-                          <h3 className="text-xl font-bold text-slate-900">{confirmModal.title}</h3>
-                          <p className="text-slate-500 text-sm mt-2">{confirmModal.message}</p>
-                      </div>
-                      <div className="flex gap-3 w-full mt-4">
-                          <button 
-                            onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))} 
-                            className="flex-1 px-4 py-2.5 border border-slate-200 rounded-lg text-slate-700 font-medium hover:bg-slate-50"
-                          >
-                              Cancel
-                          </button>
-                          <button 
-                            onClick={confirmModal.action} 
-                            disabled={isProcessing}
-                            className={`flex-1 px-4 py-2.5 text-white rounded-lg font-medium shadow-lg transition-colors ${confirmModal.type === 'warning' ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-200' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'}`}
-                          >
-                              Confirm
-                          </button>
-                      </div>
-                  </div>
-              </div>
-          </div>
-      )}
+      {/* Signature Modal */}
+      <HandoverModal
+        isOpen={signModal.isOpen}
+        employeeName={signModal.employeeName}
+        assets={signModal.assets}
+        type={signModal.type}
+        targetName={signModal.targetName}
+        onConfirm={handleSignatureConfirm}
+        onCancel={() => setSignModal(prev => ({ ...prev, isOpen: false }))}
+        isProcessing={isProcessing}
+      />
 
       {/* Link Generated Modal */}
       {linkModal.open && (
