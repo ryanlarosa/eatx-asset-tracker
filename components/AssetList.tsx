@@ -19,6 +19,10 @@ import {
   Columns,
   Check,
   RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 import {
   importAssetsBulk,
@@ -93,6 +97,10 @@ const AssetList: React.FC<AssetListProps> = ({
     () => localStorage.getItem("eatx_filter_supplier") || ""
   );
 
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
   // Column Visibility State
   const [visibleColumns, setVisibleColumns] = useState<
     Record<ColumnId, boolean>
@@ -148,6 +156,8 @@ const AssetList: React.FC<AssetListProps> = ({
     localStorage.setItem("eatx_filter_serial", filterSerial);
     localStorage.setItem("eatx_filter_employee", filterEmployee);
     localStorage.setItem("eatx_filter_supplier", filterSupplier);
+    // Reset to page 1 when filters change
+    setCurrentPage(1);
   }, [
     searchTerm,
     filterStatus,
@@ -208,6 +218,12 @@ const AssetList: React.FC<AssetListProps> = ({
     setFilterEmployee("");
     setFilterSupplier("");
   };
+
+  // Pagination Logic
+  const totalPages = Math.ceil(filteredAssets.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, filteredAssets.length);
+  const paginatedAssets = filteredAssets.slice(startIndex, endIndex);
 
   const toggleColumn = (id: ColumnId) => {
     setVisibleColumns((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -567,7 +583,7 @@ const AssetList: React.FC<AssetListProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredAssets.map((asset) => (
+              {paginatedAssets.map((asset) => (
                 <tr
                   key={asset.id}
                   className="hover:bg-slate-50 transition-colors group"
@@ -725,6 +741,74 @@ const AssetList: React.FC<AssetListProps> = ({
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination Controls */}
+        <div className="p-4 border-t border-slate-200 bg-white rounded-b-xl flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3 text-sm text-slate-600">
+            <div className="flex items-center gap-2">
+              <span>Rows per page:</span>
+              <select
+                value={itemsPerPage}
+                onChange={(e) => {
+                  setItemsPerPage(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="border border-slate-300 rounded px-2 py-1 focus:ring-2 focus:ring-slate-900 outline-none bg-white text-slate-700"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+            <span className="hidden md:inline text-slate-400">|</span>
+            <span className="text-slate-500">
+              {filteredAssets.length > 0
+                ? `${startIndex + 1}-${endIndex} of ${filteredAssets.length}`
+                : "0 of 0"}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent text-slate-600"
+              title="First Page"
+            >
+              <ChevronsLeft size={18} />
+            </button>
+            <button
+              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent text-slate-600"
+              title="Previous Page"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <span className="text-sm font-medium px-3 text-slate-700">
+              Page {currentPage} of {Math.max(1, totalPages)}
+            </span>
+            <button
+              onClick={() =>
+                setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+              }
+              disabled={currentPage === totalPages || totalPages === 0}
+              className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent text-slate-600"
+              title="Next Page"
+            >
+              <ChevronRight size={18} />
+            </button>
+            <button
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage === totalPages || totalPages === 0}
+              className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent text-slate-600"
+              title="Last Page"
+            >
+              <ChevronsRight size={18} />
+            </button>
+          </div>
         </div>
       </div>
 
