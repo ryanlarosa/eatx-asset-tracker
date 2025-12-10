@@ -9,14 +9,16 @@ import {
   User,
   Upload,
   Download,
-  FileSpreadsheet,
   Loader2,
   AlertTriangle,
-  X,
   Lock,
   Copy,
   Building2,
   ShoppingCart,
+  Calendar,
+  Columns,
+  Check,
+  RefreshCw,
 } from "lucide-react";
 import {
   importAssetsBulk,
@@ -32,12 +34,43 @@ interface AssetListProps {
   onDelete: (id: string) => void;
 }
 
+// Column Definition
+type ColumnId =
+  | "serialNumber"
+  | "category"
+  | "location"
+  | "department"
+  | "assignedEmployee"
+  | "status"
+  | "supplier"
+  | "purchaseCost"
+  | "purchaseDate";
+
+interface ColumnConfig {
+  id: ColumnId;
+  label: string;
+  defaultVisible: boolean;
+}
+
+const AVAILABLE_COLUMNS: ColumnConfig[] = [
+  { id: "serialNumber", label: "Serial No.", defaultVisible: true },
+  { id: "category", label: "Category", defaultVisible: true },
+  { id: "location", label: "Location", defaultVisible: true },
+  { id: "department", label: "Department", defaultVisible: false },
+  { id: "assignedEmployee", label: "Assigned To", defaultVisible: true },
+  { id: "status", label: "Status", defaultVisible: true },
+  { id: "supplier", label: "Supplier", defaultVisible: false },
+  { id: "purchaseCost", label: "Cost", defaultVisible: false },
+  { id: "purchaseDate", label: "Purchase Date", defaultVisible: false },
+];
+
 const AssetList: React.FC<AssetListProps> = ({
   assets,
   onEdit,
   onDuplicate,
   onDelete,
 }) => {
+  // Filter States
   const [searchTerm, setSearchTerm] = useState(
     () => localStorage.getItem("eatx_filter_search") || ""
   );
@@ -56,12 +89,28 @@ const AssetList: React.FC<AssetListProps> = ({
   const [filterEmployee, setFilterEmployee] = useState(
     () => localStorage.getItem("eatx_filter_employee") || ""
   );
+  const [filterSupplier, setFilterSupplier] = useState(
+    () => localStorage.getItem("eatx_filter_supplier") || ""
+  );
 
+  // Column Visibility State
+  const [visibleColumns, setVisibleColumns] = useState<
+    Record<ColumnId, boolean>
+  >(() => {
+    const saved = localStorage.getItem("eatx_table_columns");
+    if (saved) return JSON.parse(saved);
+    const defaults: any = {};
+    AVAILABLE_COLUMNS.forEach((col) => (defaults[col.id] = col.defaultVisible));
+    return defaults;
+  });
+  const [showColumnMenu, setShowColumnMenu] = useState(false);
+  const columnMenuRef = useRef<HTMLDivElement>(null);
+
+  // General State
   const [isImporting, setIsImporting] = useState(false);
   const [assetToDelete, setAssetToDelete] = useState<Asset | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
   const [locations, setLocations] = useState<string[]>([]);
-  const [departments, setDepartments] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Role Checks
@@ -74,11 +123,23 @@ const AssetList: React.FC<AssetListProps> = ({
       const config = await getAppConfig();
       setCategories(config.categories);
       setLocations(config.locations);
-      setDepartments(config.departments || []);
     };
     loadConfig();
+
+    // Close column menu on click outside
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        columnMenuRef.current &&
+        !columnMenuRef.current.contains(event.target as Node)
+      ) {
+        setShowColumnMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [assets]);
 
+  // Persist Filters & Columns
   useEffect(() => {
     localStorage.setItem("eatx_filter_search", searchTerm);
     localStorage.setItem("eatx_filter_status", filterStatus);
@@ -86,6 +147,7 @@ const AssetList: React.FC<AssetListProps> = ({
     localStorage.setItem("eatx_filter_location", filterLocation);
     localStorage.setItem("eatx_filter_serial", filterSerial);
     localStorage.setItem("eatx_filter_employee", filterEmployee);
+    localStorage.setItem("eatx_filter_supplier", filterSupplier);
   }, [
     searchTerm,
     filterStatus,
@@ -93,14 +155,17 @@ const AssetList: React.FC<AssetListProps> = ({
     filterLocation,
     filterSerial,
     filterEmployee,
+    filterSupplier,
   ]);
+
+  useEffect(() => {
+    localStorage.setItem("eatx_table_columns", JSON.stringify(visibleColumns));
+  }, [visibleColumns]);
 
   const filteredAssets = assets.filter((asset) => {
     const matchesSearch =
       asset.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      asset.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (asset.supplier &&
-        asset.supplier.toLowerCase().includes(searchTerm.toLowerCase()));
+      asset.description?.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesStatus =
       filterStatus === "All" || asset.status === filterStatus;
@@ -118,6 +183,10 @@ const AssetList: React.FC<AssetListProps> = ({
         asset.assignedEmployee
           .toLowerCase()
           .includes(filterEmployee.toLowerCase()));
+    const matchesSupplier =
+      filterSupplier === "" ||
+      (asset.supplier &&
+        asset.supplier.toLowerCase().includes(filterSupplier.toLowerCase()));
 
     return (
       matchesSearch &&
@@ -125,9 +194,24 @@ const AssetList: React.FC<AssetListProps> = ({
       matchesCategory &&
       matchesLocation &&
       matchesSerial &&
-      matchesEmployee
+      matchesEmployee &&
+      matchesSupplier
     );
   });
+
+  const clearFilters = () => {
+    setSearchTerm("");
+    setFilterStatus("All");
+    setFilterCategory("All");
+    setFilterLocation("All");
+    setFilterSerial("");
+    setFilterEmployee("");
+    setFilterSupplier("");
+  };
+
+  const toggleColumn = (id: ColumnId) => {
+    setVisibleColumns((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -146,26 +230,16 @@ const AssetList: React.FC<AssetListProps> = ({
     }
   };
 
+  // --- Import/Export Handlers ---
   const handleDownloadTemplate = async () => {
     const workbook = new ExcelJS.Workbook();
-
-    // 1. Validator Sheet (Hidden) - Config Data
     const validatorSheet = workbook.addWorksheet("Validators");
     validatorSheet.state = "hidden";
-
-    // Add data to validators
     validatorSheet.getColumn(1).values = ["Categories", ...categories];
     validatorSheet.getColumn(2).values = ["Locations", ...locations];
     validatorSheet.getColumn(3).values = ["Statuses", ...ASSET_STATUSES];
-    validatorSheet.getColumn(4).values = [
-      "Departments",
-      ...(departments.length > 0 ? departments : ["None"]),
-    ];
 
-    // 2. Assets Sheet (Main)
     const sheet = workbook.addWorksheet("Assets");
-
-    // Headers
     sheet.columns = [
       { header: "Asset Name (Required)", key: "name", width: 30 },
       { header: "Category", key: "category", width: 25 },
@@ -179,40 +253,22 @@ const AssetList: React.FC<AssetListProps> = ({
       { header: "Assigned Employee", key: "assignedEmployee", width: 25 },
       { header: "Description / Notes", key: "description", width: 40 },
     ];
-
-    // Style Header
     sheet.getRow(1).font = { bold: true };
-    sheet.getRow(1).fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FFE2E8F0" },
-    }; // Slate-200
 
-    // Add Data Validation (Dropdowns) to Columns
-    // Assuming max 1000 rows for dropdowns to keep file light
+    // Validations
     const rowCount = 1000;
-
-    // Category (Col B -> Index 2)
     for (let i = 2; i <= rowCount; i++) {
       sheet.getCell(`B${i}`).dataValidation = {
         type: "list",
         allowBlank: true,
         formulae: [`Validators!$A$2:$A$${categories.length + 1}`],
       };
-    }
-
-    // Status (Col C -> Index 3)
-    for (let i = 2; i <= rowCount; i++) {
       sheet.getCell(`C${i}`).dataValidation = {
         type: "list",
         allowBlank: false,
         formulae: [`Validators!$C$2:$C$${ASSET_STATUSES.length + 1}`],
       };
-      sheet.getCell(`C${i}`).value = "Active"; // Default value
-    }
-
-    // Location (Col D -> Index 4)
-    for (let i = 2; i <= rowCount; i++) {
+      sheet.getCell(`C${i}`).value = "Active";
       sheet.getCell(`D${i}`).dataValidation = {
         type: "list",
         allowBlank: true,
@@ -220,16 +276,6 @@ const AssetList: React.FC<AssetListProps> = ({
       };
     }
 
-    // Department (Col E -> Index 5)
-    for (let i = 2; i <= rowCount; i++) {
-      sheet.getCell(`E${i}`).dataValidation = {
-        type: "list",
-        allowBlank: true,
-        formulae: [`Validators!$D$2:$D$${departments.length + 1}`],
-      };
-    }
-
-    // Generate File
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -252,24 +298,19 @@ const AssetList: React.FC<AssetListProps> = ({
       const buffer = await file.arrayBuffer();
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(buffer);
-
       const sheet = workbook.getWorksheet("Assets") || workbook.worksheets[0];
       const newAssets: Asset[] = [];
 
-      // Fix: Explicitly typing row as any to bypass implicit any error, and rowNumber as number
       sheet.eachRow((row: any, rowNumber: number) => {
-        if (rowNumber === 1) return; // Skip header
-
-        // Safe value extractor
+        if (rowNumber === 1) return;
         const getVal = (idx: number) => {
           const val = row.getCell(idx).value;
-          if (val && typeof val === "object" && "text" in val) return val.text; // Handle hyperlinks/rich text
+          if (val && typeof val === "object" && "text" in val) return val.text;
           return val ? String(val).trim() : "";
         };
 
         const name = getVal(1);
-        if (!name) return; // Skip empty rows
-
+        if (!name) return;
         const costVal = getVal(8);
         const dateVal = getVal(9);
 
@@ -285,7 +326,7 @@ const AssetList: React.FC<AssetListProps> = ({
           serialNumber: getVal(6) || "",
           supplier: getVal(7) || "",
           purchaseCost: costVal ? parseFloat(costVal) : undefined,
-          purchaseDate: dateVal || undefined, // Keep undefined if blank
+          purchaseDate: dateVal || undefined,
           assignedEmployee: getVal(10) || "",
           description: getVal(11) || "Imported via Excel",
           lastUpdated: new Date().toISOString(),
@@ -296,11 +337,11 @@ const AssetList: React.FC<AssetListProps> = ({
         await importAssetsBulk(newAssets);
         alert(`Successfully imported ${newAssets.length} assets.`);
       } else {
-        alert("No valid asset data found in file.");
+        alert("No valid asset data found.");
       }
     } catch (err) {
       console.error(err);
-      alert("Error parsing Excel file. Please use the provided template.");
+      alert("Error parsing Excel file.");
     } finally {
       setIsImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -309,29 +350,72 @@ const AssetList: React.FC<AssetListProps> = ({
 
   return (
     <>
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden relative">
-        <div className="p-4 border-b border-slate-200 bg-slate-50 space-y-4">
-          <div className="flex flex-col md:flex-row justify-between gap-4">
-            <div className="relative flex-1">
-              <Search
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                size={18}
-              />
-              <input
-                type="text"
-                placeholder="Search name, supplier, details..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 text-sm"
-              />
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col h-full">
+        {/* Top Bar: Global Search & Actions - INCREASED Z-INDEX to 30 */}
+        <div className="p-4 border-b border-slate-200 bg-white flex flex-col md:flex-row justify-between gap-4 relative z-30">
+          <div className="relative flex-1 max-w-md">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              size={18}
+            />
+            <input
+              type="text"
+              placeholder="Global search (Name, Description)..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 text-sm shadow-sm"
+            />
+          </div>
+          <div className="flex gap-2">
+            {/* Column Selector */}
+            <div className="relative" ref={columnMenuRef}>
+              <button
+                onClick={() => setShowColumnMenu(!showColumnMenu)}
+                className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm font-medium transition-colors ${
+                  showColumnMenu
+                    ? "bg-slate-100 border-slate-400 text-slate-900"
+                    : "bg-white border-slate-300 text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                <Columns size={16} /> Columns
+              </button>
+              {showColumnMenu && (
+                <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden animate-in fade-in zoom-in-95">
+                  <div className="p-3 bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Toggle Visibility
+                  </div>
+                  <div className="p-2 max-h-60 overflow-y-auto custom-scrollbar">
+                    <div className="flex items-center gap-2 p-2 rounded hover:bg-slate-50 text-sm text-slate-400 cursor-not-allowed">
+                      <Check size={14} className="text-slate-400" /> Asset Name
+                      (Locked)
+                    </div>
+                    {AVAILABLE_COLUMNS.map((col) => (
+                      <label
+                        key={col.id}
+                        className="flex items-center gap-2 p-2 rounded hover:bg-slate-50 cursor-pointer text-sm text-slate-700"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={visibleColumns[col.id]}
+                          onChange={() => toggleColumn(col.id)}
+                          className="rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+                        />
+                        {col.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
+
             {canEdit && (
-              <div className="flex gap-2">
+              <>
                 <button
                   onClick={handleDownloadTemplate}
-                  className="flex items-center gap-2 px-3 py-2 bg-white text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 text-sm font-medium"
+                  className="p-2 bg-white text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50"
+                  title="Download Template"
                 >
-                  <Download size={16} /> Template
+                  <Download size={18} />
                 </button>
                 <div className="relative">
                   <input
@@ -344,156 +428,249 @@ const AssetList: React.FC<AssetListProps> = ({
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isImporting}
-                    className="flex items-center gap-2 px-3 py-2 bg-slate-800 text-white border border-slate-800 rounded-lg hover:bg-slate-900 text-sm font-medium disabled:opacity-50"
+                    className="p-2 bg-slate-900 text-white border border-slate-900 rounded-lg hover:bg-black disabled:opacity-50"
+                    title="Import Excel"
                   >
                     {isImporting ? (
-                      <Loader2 size={16} className="animate-spin" />
+                      <Loader2 size={18} className="animate-spin" />
                     ) : (
-                      <Upload size={16} />
-                    )}{" "}
-                    Import Excel
+                      <Upload size={18} />
+                    )}
                   </button>
                 </div>
-              </div>
+              </>
             )}
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            <div className="md:col-span-1">
-              <input
-                type="text"
-                placeholder="Serial No."
-                value={filterSerial}
-                onChange={(e) => setFilterSerial(e.target.value)}
-                className="w-full p-2 border border-slate-300 rounded-lg text-sm"
-              />
-            </div>
-            <div className="md:col-span-1">
-              <input
-                type="text"
-                placeholder="Employee"
-                value={filterEmployee}
-                onChange={(e) => setFilterEmployee(e.target.value)}
-                className="w-full p-2 border border-slate-300 rounded-lg text-sm"
-              />
-            </div>
-            <div className="md:col-span-1">
-              <select
-                value={filterCategory}
-                onChange={(e) => setFilterCategory(e.target.value)}
-                className="w-full p-2 border border-slate-300 rounded-lg text-sm"
-              >
-                <option value="All">All Categories</option>
-                {categories.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="md:col-span-1">
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full p-2 border border-slate-300 rounded-lg text-sm"
-              >
-                <option value="All">All Statuses</option>
-                {ASSET_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="md:col-span-1">
-              <select
-                value={filterLocation}
-                onChange={(e) => setFilterLocation(e.target.value)}
-                className="w-full p-2 border border-slate-300 rounded-lg text-sm"
-              >
-                <option value="All">All Locations</option>
-                {locations.map((l) => (
-                  <option key={l} value={l}>
-                    {l}
-                  </option>
-                ))}
-              </select>
-            </div>
           </div>
         </div>
 
+        {/* Filter Bar - INCREASED Z-INDEX to 20 */}
+        <div className="p-4 bg-slate-50 border-b border-slate-200 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 relative z-20">
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Serial No."
+              value={filterSerial}
+              onChange={(e) => setFilterSerial(e.target.value)}
+              className="w-full pl-2 pr-2 py-1.5 border border-slate-300 rounded-md text-sm"
+            />
+          </div>
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Employee"
+              value={filterEmployee}
+              onChange={(e) => setFilterEmployee(e.target.value)}
+              className="w-full pl-2 pr-2 py-1.5 border border-slate-300 rounded-md text-sm"
+            />
+          </div>
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Supplier"
+              value={filterSupplier}
+              onChange={(e) => setFilterSupplier(e.target.value)}
+              className="w-full pl-2 pr-2 py-1.5 border border-slate-300 rounded-md text-sm"
+            />
+          </div>
+          <div>
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="w-full py-1.5 px-2 border border-slate-300 rounded-md text-sm bg-white"
+            >
+              <option value="All">All Categories</option>
+              {categories.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="w-full py-1.5 px-2 border border-slate-300 rounded-md text-sm bg-white"
+            >
+              <option value="All">All Statuses</option>
+              {ASSET_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <select
+              value={filterLocation}
+              onChange={(e) => setFilterLocation(e.target.value)}
+              className="w-full py-1.5 px-2 border border-slate-300 rounded-md text-sm bg-white"
+            >
+              <option value="All">All Locations</option>
+              {locations.map((l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={clearFilters}
+            className="py-1.5 px-2 border border-slate-300 bg-white hover:bg-slate-100 text-slate-600 rounded-md text-xs font-medium flex items-center justify-center gap-1"
+          >
+            <RefreshCw size={12} /> Clear Filters
+          </button>
+        </div>
+
+        {/* Table Area */}
         <div className="overflow-x-auto min-h-[400px]">
-          <table className="w-full text-left border-collapse">
+          {/* Added min-w-[1200px] to prevent column squishing/overlap on small screens */}
+          <table className="w-full text-left border-collapse min-w-[1200px]">
             <thead>
               <tr className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider font-semibold border-b border-slate-200">
-                <th className="p-4">Asset</th>
-                <th className="p-4">Category</th>
-                <th className="p-4">Location & Dept</th>
-                <th className="p-4">Assigned To</th>
-                <th className="p-4">Status</th>
-                <th className="p-4 text-right">Actions</th>
+                <th className="p-4 w-[250px] sticky left-0 bg-slate-50 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                  Asset Name
+                </th>
+
+                {visibleColumns.serialNumber && (
+                  <th className="p-4 w-[120px]">Serial No.</th>
+                )}
+                {visibleColumns.category && (
+                  <th className="p-4 w-[120px]">Category</th>
+                )}
+                {visibleColumns.status && (
+                  <th className="p-4 w-[100px]">Status</th>
+                )}
+                {visibleColumns.location && (
+                  <th className="p-4 w-[150px]">Location</th>
+                )}
+                {visibleColumns.department && (
+                  <th className="p-4 w-[120px]">Department</th>
+                )}
+                {visibleColumns.assignedEmployee && (
+                  <th className="p-4 w-[150px]">Assigned To</th>
+                )}
+                {visibleColumns.supplier && (
+                  <th className="p-4 w-[150px]">Supplier</th>
+                )}
+                {visibleColumns.purchaseCost && (
+                  <th className="p-4 w-[100px] text-right">Cost</th>
+                )}
+                {visibleColumns.purchaseDate && (
+                  <th className="p-4 w-[120px]">Purchase Date</th>
+                )}
+
+                {/* Added shadow to sticky right column for better separation */}
+                <th className="p-4 text-right sticky right-0 bg-slate-50 z-10 w-[100px] shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredAssets.map((asset) => (
                 <tr
                   key={asset.id}
-                  className="hover:bg-slate-50 transition-colors"
+                  className="hover:bg-slate-50 transition-colors group"
                 >
-                  <td className="p-4">
-                    <div className="font-semibold text-slate-900">
+                  {/* Fixed Name Column */}
+                  <td className="p-4 sticky left-0 bg-white z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] group-hover:bg-slate-50">
+                    <div className="font-bold text-slate-800 text-sm">
                       {asset.name}
                     </div>
-                    <div className="flex items-center gap-2 mt-1">
-                      {asset.supplier && (
-                        <span className="text-xs font-medium text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded">
-                          <ShoppingCart size={10} /> {asset.supplier}
-                        </span>
-                      )}
-                      <span className="text-xs text-slate-400 font-mono">
-                        {asset.serialNumber}
-                      </span>
-                    </div>
-                    <div className="text-xs text-slate-500 truncate max-w-[180px] mt-1">
+                    <div className="text-xs text-slate-500 truncate max-w-[220px] mt-0.5">
                       {asset.description}
                     </div>
                   </td>
-                  <td className="p-4">
-                    <div className="flex items-center gap-1.5 text-xs font-medium px-2 py-1 bg-slate-100 rounded-md w-fit text-slate-700">
-                      <Tag size={12} /> {asset.category}
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-1.5 text-sm text-slate-600">
-                        <MapPin size={14} /> {asset.location}
+
+                  {/* Dynamic Columns */}
+                  {visibleColumns.serialNumber && (
+                    <td className="p-4 text-xs font-mono text-slate-600">
+                      {asset.serialNumber || "-"}
+                    </td>
+                  )}
+
+                  {visibleColumns.category && (
+                    <td className="p-4">
+                      <div className="flex items-center gap-1.5 text-xs font-medium px-2 py-1 bg-slate-100 rounded-md w-fit text-slate-700 whitespace-nowrap">
+                        <Tag size={12} /> {asset.category}
                       </div>
-                      {asset.department && (
-                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                    </td>
+                  )}
+
+                  {visibleColumns.status && (
+                    <td className="p-4">
+                      <span
+                        className={`px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap ${getStatusColor(
+                          asset.status
+                        )}`}
+                      >
+                        {asset.status}
+                      </span>
+                    </td>
+                  )}
+
+                  {visibleColumns.location && (
+                    <td className="p-4 text-sm text-slate-600 flex items-center gap-1">
+                      <MapPin size={14} className="text-slate-400 shrink-0" />{" "}
+                      {asset.location}
+                    </td>
+                  )}
+
+                  {visibleColumns.department && (
+                    <td className="p-4 text-xs text-slate-500">
+                      {asset.department ? (
+                        <div className="flex items-center gap-1">
                           <Building2 size={12} /> {asset.department}
                         </div>
+                      ) : (
+                        "-"
                       )}
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    {asset.assignedEmployee ? (
-                      <div className="flex items-center gap-1.5 text-xs text-slate-800 font-medium bg-slate-100 px-1.5 py-0.5 rounded w-fit">
-                        <User size={12} /> {asset.assignedEmployee}
-                      </div>
-                    ) : (
-                      <span className="text-slate-400 text-xs">-</span>
-                    )}
-                  </td>
-                  <td className="p-4">
-                    <span
-                      className={`px-2.5 py-1 rounded-full text-xs font-bold ${getStatusColor(
-                        asset.status
-                      )}`}
-                    >
-                      {asset.status}
-                    </span>
-                  </td>
-                  <td className="p-4 text-right">
-                    <div className="flex justify-end gap-2">
+                    </td>
+                  )}
+
+                  {visibleColumns.assignedEmployee && (
+                    <td className="p-4">
+                      {asset.assignedEmployee ? (
+                        <div className="flex items-center gap-1.5 text-xs text-slate-800 font-medium bg-slate-100 px-1.5 py-0.5 rounded w-fit whitespace-nowrap">
+                          <User size={12} /> {asset.assignedEmployee}
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 text-xs">-</span>
+                      )}
+                    </td>
+                  )}
+
+                  {visibleColumns.supplier && (
+                    <td className="p-4 text-sm text-slate-600">
+                      {asset.supplier ? (
+                        <div className="flex items-center gap-1">
+                          <ShoppingCart size={14} className="text-slate-400" />{" "}
+                          {asset.supplier}
+                        </div>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                  )}
+
+                  {visibleColumns.purchaseCost && (
+                    <td className="p-4 text-sm text-slate-700 text-right font-mono">
+                      {asset.purchaseCost
+                        ? `AED ${asset.purchaseCost.toLocaleString()}`
+                        : "-"}
+                    </td>
+                  )}
+
+                  {visibleColumns.purchaseDate && (
+                    <td className="p-4 text-xs text-slate-500 flex items-center gap-1">
+                      <Calendar size={12} className="text-slate-400" />{" "}
+                      {asset.purchaseDate || "-"}
+                    </td>
+                  )}
+
+                  {/* Actions */}
+                  <td className="p-4 text-right sticky right-0 bg-white z-10 group-hover:bg-slate-50 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                    <div className="flex justify-end gap-1">
                       {canEdit ? (
                         <>
                           <button
@@ -501,7 +678,7 @@ const AssetList: React.FC<AssetListProps> = ({
                               e.stopPropagation();
                               onEdit(asset);
                             }}
-                            className="p-2 text-slate-600 hover:bg-slate-200 rounded-md"
+                            className="p-1.5 text-slate-600 hover:bg-slate-200 rounded-md"
                             title="Edit"
                           >
                             <Edit2 size={16} />
@@ -511,7 +688,7 @@ const AssetList: React.FC<AssetListProps> = ({
                               e.stopPropagation();
                               onDuplicate(asset);
                             }}
-                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-md"
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-md"
                             title="Duplicate"
                           >
                             <Copy size={16} />
@@ -524,7 +701,7 @@ const AssetList: React.FC<AssetListProps> = ({
                             e.stopPropagation();
                             setAssetToDelete(asset);
                           }}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-md"
+                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-md"
                           title="Delete"
                         >
                           <Trash2 size={16} />
@@ -539,6 +716,13 @@ const AssetList: React.FC<AssetListProps> = ({
                   </td>
                 </tr>
               ))}
+              {filteredAssets.length === 0 && (
+                <tr>
+                  <td colSpan={10} className="p-12 text-center text-slate-400">
+                    No assets found matching your filters.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
