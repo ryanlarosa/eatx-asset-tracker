@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Project, ProjectItem } from '../types';
-import { getProjects, saveProject, deleteProject, getAppConfig, getCurrentUserProfile } from '../services/storageService';
+import { listenToProjects, saveProject, deleteProject, getAppConfig, getCurrentUserProfile } from '../services/storageService';
 import { PlusCircle, Calendar, CheckSquare, Trash2, ChevronRight, ChevronDown, ShoppingBag, Lock } from 'lucide-react';
 
 const Planner: React.FC = () => {
@@ -26,16 +26,15 @@ const Planner: React.FC = () => {
   const canDelete = user?.role === 'admin';
 
   useEffect(() => {
-    loadProjects();
+    const unsub = listenToProjects((data) => setProjects(data));
     const loadConfig = async () => {
        const config = await getAppConfig();
        setCategories(config.categories);
        if (config.categories.length > 0) setNewItemCategory(config.categories[0]);
     }
     loadConfig();
+    return () => unsub();
   }, []);
-
-  const loadProjects = async () => setProjects(await getProjects());
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,7 +48,6 @@ const Planner: React.FC = () => {
       items: []
     };
     await saveProject(newProject);
-    await loadProjects();
     setIsCreating(false);
     setNewProjectName('');
   };
@@ -69,7 +67,6 @@ const Planner: React.FC = () => {
       dueDate: newItemDate
     };
     await saveProject({ ...project, items: [...project.items, newItem] });
-    await loadProjects();
     setNewItemName('');
     setNewItemCost(0);
   };
@@ -83,7 +80,6 @@ const Planner: React.FC = () => {
     const allReceived = updatedItems.every(i => i.status === 'Received');
     if (allReceived && updatedProject.status !== 'Completed') updatedProject.status = 'Completed';
     await saveProject(updatedProject);
-    await loadProjects();
   };
 
   const getStatusColor = (status: string) => {
@@ -141,7 +137,7 @@ const Planner: React.FC = () => {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                {canDelete && <button onClick={(e) => { e.stopPropagation(); deleteProject(project.id).then(loadProjects); }} className="p-2 text-slate-400 hover:text-red-600"><Trash2 size={18} /></button>}
+                {canDelete && <button onClick={(e) => { e.stopPropagation(); deleteProject(project.id); }} className="p-2 text-slate-400 hover:text-red-600"><Trash2 size={18} /></button>}
                 {expandedProject === project.id ? <ChevronDown size={20} className="text-slate-400"/> : <ChevronRight size={20} className="text-slate-400"/>}
               </div>
             </div>

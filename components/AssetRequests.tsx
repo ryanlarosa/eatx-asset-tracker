@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Asset, AssetRequest } from '../types';
-import { getAssetRequests, getAssets, updateAssetRequest, fulfillAssetRequest } from '../services/storageService';
+import { listenToRequests, listenToAssets, updateAssetRequest, fulfillAssetRequest } from '../services/storageService';
 import { ShoppingBag, Clock, CheckCircle, XCircle, ChevronRight, User, AlertCircle, Link as LinkIcon, Box, Loader2, ArrowRight } from 'lucide-react';
 
 const AssetRequests: React.FC = () => {
@@ -18,16 +18,18 @@ const AssetRequests: React.FC = () => {
     const [isProcessing, setIsProcessing] = useState(false);
 
     useEffect(() => {
-        loadData();
-    }, []);
-
-    const loadData = async () => {
         setLoading(true);
-        const [r, a] = await Promise.all([getAssetRequests(), getAssets()]);
-        setRequests(r);
-        setAssets(a);
+        const unsubRequests = listenToRequests((data) => {
+            setRequests(data);
+            setSelectedRequest(prev => prev ? data.find(r => r.id === prev.id) || null : null);
+        });
+        const unsubAssets = listenToAssets((data) => setAssets(data));
         setLoading(false);
-    };
+        return () => {
+            unsubRequests();
+            unsubAssets();
+        }
+    }, []);
 
     const handleProcess = async () => {
         if (!selectedRequest) return;
@@ -52,7 +54,7 @@ const AssetRequests: React.FC = () => {
                 }
                 await fulfillAssetRequest(selectedRequest.id, selectedAssetId, notes);
             }
-            await loadData();
+            // Listener handles refresh
             setSelectedRequest(null);
             setNotes('');
             setSelectedAssetId('');

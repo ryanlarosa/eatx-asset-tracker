@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Asset, ASSET_STATUSES, AssetLog } from '../types';
 import { parseAssetDescription, isAiConfigured } from '../services/geminiService';
 import { getAppConfig, getAssetLogs } from '../services/storageService';
-import { Sparkles, Save, X, Loader2, Clock, User, Circle } from 'lucide-react';
+import { Sparkles, Save, X, Loader2, Clock, User, Circle, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface AssetFormProps {
   initialData?: Asset | null;
@@ -22,8 +22,8 @@ const emptyAsset: Asset = {
   assignedEmployee: '',
   serialNumber: '',
   supplier: '',
-  purchaseDate: new Date().toISOString().split('T')[0],
-  purchaseCost: 0,
+  purchaseDate: '',
+  purchaseCost: undefined,
   lastUpdated: ''
 };
 
@@ -37,6 +37,9 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
   
   // History Logs
   const [logs, setLogs] = useState<AssetLog[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
+  const LOGS_PER_PAGE = 5;
   
   // Config state
   const [categories, setCategories] = useState<string[]>([]);
@@ -56,7 +59,8 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
         if (initialData) {
             setFormData(initialData);
             // Load logs
-            setLogs(await getAssetLogs(initialData.id));
+            const assetLogs = await getAssetLogs(initialData.id);
+            setLogs(assetLogs);
         } else {
             setFormData({
                 ...emptyAsset,
@@ -74,7 +78,7 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: name === 'purchaseCost' ? parseFloat(value) || 0 : value
+      [name]: name === 'purchaseCost' ? (value === '' ? undefined : parseFloat(value)) : value
     }));
   };
 
@@ -106,6 +110,10 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
         setIsSaving(false);
     }
   };
+
+  // Pagination Logic
+  const totalPages = Math.ceil(logs.length / LOGS_PER_PAGE);
+  const displayedLogs = logs.slice((historyPage - 1) * LOGS_PER_PAGE, historyPage * LOGS_PER_PAGE);
 
   return (
     <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
@@ -272,10 +280,11 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
               <input
                 type="number"
                 name="purchaseCost"
-                value={formData.purchaseCost}
+                value={formData.purchaseCost === undefined ? '' : formData.purchaseCost}
                 onChange={handleChange}
                 min="0"
                 step="0.01"
+                placeholder="Optional"
                 className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
               />
             </div>
@@ -284,7 +293,7 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
               <input
                 type="date"
                 name="purchaseDate"
-                value={formData.purchaseDate}
+                value={formData.purchaseDate || ''}
                 onChange={handleChange}
                 className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
               />
@@ -322,31 +331,68 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
         </form>
       )}
 
-      {/* History Timeline */}
+      {/* History Timeline - Redesigned with Accordion & Pagination */}
       {initialData && logs.length > 0 && (
         <div className="mt-8 pt-8 border-t border-slate-200">
-            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                <Clock size={20} /> Asset History
-            </h3>
-            <div className="space-y-6 relative before:absolute before:left-[19px] before:top-2 before:h-full before:w-[2px] before:bg-slate-100">
-                {logs.map((log) => (
-                    <div key={log.id} className="relative flex items-start gap-4">
-                        <div className={`z-10 w-10 h-10 rounded-full flex items-center justify-center border-4 border-white shadow-sm ${log.action === 'Created' ? 'bg-emerald-100 text-emerald-600' : log.action === 'Returned' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-600'}`}>
-                            <Circle size={12} fill="currentColor" />
-                        </div>
-                        <div className="flex-1 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                            <div className="flex justify-between items-start">
-                                <span className="font-semibold text-slate-800 text-sm">{log.action}</span>
-                                <span className="text-xs text-slate-400">{new Date(log.timestamp).toLocaleDateString()} {new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+            <button 
+                type="button"
+                onClick={() => setShowHistory(!showHistory)}
+                className="w-full flex items-center justify-between group"
+            >
+                <h3 className="font-bold text-slate-800 flex items-center gap-2 group-hover:text-slate-600 transition-colors">
+                    <Clock size={20} /> Asset History 
+                    <span className="text-xs font-normal text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{logs.length} Events</span>
+                </h3>
+                {showHistory ? <ChevronUp size={20} className="text-slate-400" /> : <ChevronDown size={20} className="text-slate-400" />}
+            </button>
+            
+            {showHistory && (
+                <div className="mt-6 animate-in slide-in-from-top-2 fade-in duration-200">
+                    <div className="space-y-6 relative before:absolute before:left-[19px] before:top-2 before:h-full before:w-[2px] before:bg-slate-100">
+                        {displayedLogs.map((log) => (
+                            <div key={log.id} className="relative flex items-start gap-4">
+                                <div className={`z-10 w-10 h-10 rounded-full flex items-center justify-center border-4 border-white shadow-sm ${log.action === 'Created' ? 'bg-emerald-100 text-emerald-600' : log.action === 'Returned' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-600'}`}>
+                                    <Circle size={12} fill="currentColor" />
+                                </div>
+                                <div className="flex-1 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                    <div className="flex justify-between items-start">
+                                        <span className="font-semibold text-slate-800 text-sm">{log.action}</span>
+                                        <span className="text-xs text-slate-400">{new Date(log.timestamp).toLocaleDateString()} {new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                    </div>
+                                    <p className="text-sm text-slate-600 mt-1">{log.details}</p>
+                                    <div className="flex items-center gap-1 mt-2 text-xs text-slate-400">
+                                        <User size={12} /> {log.performedBy}
+                                    </div>
+                                </div>
                             </div>
-                            <p className="text-sm text-slate-600 mt-1">{log.details}</p>
-                            <div className="flex items-center gap-1 mt-2 text-xs text-slate-400">
-                                <User size={12} /> {log.performedBy}
-                            </div>
-                        </div>
+                        ))}
                     </div>
-                ))}
-            </div>
+
+                    {totalPages > 1 && (
+                        <div className="flex items-center justify-between mt-6 pl-14">
+                            <span className="text-xs text-slate-400">Page {historyPage} of {totalPages}</span>
+                            <div className="flex gap-2">
+                                <button
+                                    type="button" 
+                                    onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
+                                    disabled={historyPage === 1}
+                                    className="p-1.5 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50 text-slate-600"
+                                >
+                                    <ChevronLeft size={16} />
+                                </button>
+                                <button 
+                                    type="button"
+                                    onClick={() => setHistoryPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={historyPage === totalPages}
+                                    className="p-1.5 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50 text-slate-600"
+                                >
+                                    <ChevronRight size={16} />
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
       )}
     </div>

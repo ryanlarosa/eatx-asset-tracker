@@ -97,8 +97,8 @@ export interface Asset {
   assignedEmployee?: string;
   serialNumber: string;
   supplier?: string;
-  purchaseDate: string;
-  purchaseCost: number;
+  purchaseDate?: string;
+  purchaseCost?: number;
   lastUpdated: string;
 }
 

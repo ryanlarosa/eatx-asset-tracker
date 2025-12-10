@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Asset, IncidentReport, UserRole } from '../types';
-import { getIncidentReports, createIncidentReport, updateIncidentReport, getAssets, getAppConfig, getCurrentUserProfile, processAssetReplacement } from '../services/storageService';
+import { listenToIncidents, listenToAssets, createIncidentReport, updateIncidentReport, getAppConfig, getCurrentUserProfile, processAssetReplacement } from '../services/storageService';
 import { AlertCircle, CheckCircle, Clock, Search, Filter, Plus, PenTool, Wrench, X, MessageSquare, ArrowRight, Loader2, Link as LinkIcon, ThumbsUp, ThumbsDown, MonitorSmartphone, RefreshCw, AlertTriangle, Image as ImageIcon, Download } from 'lucide-react';
 
 const RepairTickets: React.FC = () => {
@@ -39,18 +39,27 @@ const RepairTickets: React.FC = () => {
     const canManage = currentUser?.role === 'admin' || currentUser?.role === 'technician';
 
     useEffect(() => {
-        loadData();
-    }, []);
-
-    const loadData = async () => {
         setLoading(true);
-        const [t, a, c] = await Promise.all([getIncidentReports(), getAssets(), getAppConfig()]);
-        setTickets(t);
-        setAssets(a);
-        setLocations(c.locations);
-        setCategories(c.categories);
-        setLoading(false);
-    };
+        const unsubIncidents = listenToIncidents((data) => {
+            setTickets(data);
+            // If selected ticket exists, update its local data
+            setSelectedTicket(prev => prev ? data.find(t => t.id === prev.id) || null : null);
+        });
+        const unsubAssets = listenToAssets((data) => setAssets(data));
+        
+        const loadConfig = async () => {
+            const c = await getAppConfig();
+            setLocations(c.locations);
+            setCategories(c.categories);
+            setLoading(false);
+        }
+        loadConfig();
+
+        return () => {
+            unsubIncidents();
+            unsubAssets();
+        }
+    }, []);
 
     const handleAssetChange = (id: string) => {
         setNewTicket(prev => {
@@ -126,7 +135,6 @@ const RepairTickets: React.FC = () => {
             reportedBy: currentUser?.email || 'Unknown'
         });
 
-        await loadData();
         setIsCreating(false);
         setNewTicket({ location: '', assetId: '', assetName: '', deviceType: '', reportedSerial: '', imageBase64: '', description: '', priority: 'Medium' });
     };
@@ -153,7 +161,6 @@ const RepairTickets: React.FC = () => {
                 }, autoFixAsset);
             }
             
-            await loadData();
             setSelectedTicket(null);
             setResolveNotes('');
             setReplacementAssetId('');
@@ -168,14 +175,11 @@ const RepairTickets: React.FC = () => {
     const handleStatusUpdate = async (status: IncidentReport['status']) => {
         if (!selectedTicket) return;
         await updateIncidentReport(selectedTicket.id, { status });
-        await loadData();
-        setSelectedTicket(prev => prev ? ({...prev, status}) : null);
     };
 
     const handleApprove = async () => {
         if (!selectedTicket) return;
         await updateIncidentReport(selectedTicket.id, { status: 'Open' });
-        await loadData();
         setSelectedTicket(null);
     };
 

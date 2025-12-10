@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Asset, UserProfile, HandoverDocument } from '../types';
-import { getAssets, bulkAssignAssets, bulkReturnAssets, bulkTransferAssets, getCurrentUserProfile, saveHandoverDocument, getHandoverDocuments, createPendingHandover } from '../services/storageService';
+import { listenToAssets, bulkAssignAssets, bulkReturnAssets, bulkTransferAssets, getCurrentUserProfile, saveHandoverDocument, getHandoverDocuments, createPendingHandover } from '../services/storageService';
 import { Briefcase, Archive, ArrowRight, CheckCircle, Search, Laptop, Smartphone, Monitor, User as UserIcon, AlertTriangle, X, FileText, Download, Link as LinkIcon, Mail, Printer } from 'lucide-react';
 import HandoverModal from './HandoverModal';
 
@@ -32,19 +32,35 @@ const StaffView: React.FC = () => {
   const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'technician';
 
   useEffect(() => {
-    refreshAssets();
+    // Real-time listener ensures that if asset status changes (e.g. signed elsewhere), it reflects here
+    const unsubscribe = listenToAssets((data) => {
+        setAssets(data);
+    });
+    return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    // Clear selection if assets change status and are no longer valid for current view
+    setSelectedAssetIds(prev => {
+        const newSet = new Set<string>();
+        prev.forEach(id => {
+            const asset = assets.find(a => a.id === id);
+            if (!asset) return;
+            if (mode === 'offboard') {
+                 if (asset.assignedEmployee === selectedEmployee) newSet.add(id);
+            } else {
+                 if (!asset.assignedEmployee || asset.status === 'In Storage') newSet.add(id);
+            }
+        });
+        return newSet;
+    })
+  }, [assets, mode, selectedEmployee]);
 
   useEffect(() => {
     if (view === 'documents') {
       loadDocuments();
     }
   }, [view]);
-
-  const refreshAssets = async () => {
-    setAssets(await getAssets());
-    setSelectedAssetIds(new Set());
-  };
 
   const [documents, setDocuments] = useState<HandoverDocument[]>([]);
   const loadDocuments = async () => {
@@ -153,8 +169,8 @@ const StaffView: React.FC = () => {
               await bulkTransferAssets(assetIds, signModal.targetName, docData.id);
               setSuccessMsg(`Successfully transferred assets to ${signModal.targetName}`);
           }
-
-          await refreshAssets();
+          // No need to refreshAssets manually, listener will update
+          
           setSignModal({ ...signModal, isOpen: false });
           setSelectedAssetIds(new Set());
           setTargetEmployee('');

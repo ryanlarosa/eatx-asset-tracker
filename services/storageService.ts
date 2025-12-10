@@ -1,7 +1,7 @@
 
 import { Asset, Project, ProjectItem, AppConfig, AssetStats, UserProfile, UserRole, AssetLog, HandoverDocument, PendingHandover, IncidentReport, AssetRequest, Invoice } from '../types';
 import { initializeApp, getApps, getApp, deleteApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc, updateDoc, getDoc, Firestore, query, where, orderBy, addDoc } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc, updateDoc, getDoc, Firestore, query, where, orderBy, addDoc, onSnapshot, writeBatch } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, Auth, createUserWithEmailAndPassword } from 'firebase/auth';
 
 // --- ENV Configuration ---
@@ -76,6 +76,89 @@ const removeUndefined = (obj: any) => {
     if (obj[key] !== undefined) newObj[key] = obj[key];
   });
   return newObj;
+};
+
+// --- REAL-TIME LISTENERS ---
+
+export const listenToAssets = (callback: (assets: Asset[]) => void) => {
+    if (!db) return () => {};
+    const q = query(collection(db, 'assets'));
+    return onSnapshot(q, (snapshot) => {
+        const assets: Asset[] = [];
+        snapshot.forEach(doc => assets.push(doc.data() as Asset));
+        callback(assets);
+    });
+};
+
+export const listenToIncidents = (callback: (incidents: IncidentReport[]) => void) => {
+    if (!db) return () => {};
+    const q = query(collection(db, 'incidents'));
+    return onSnapshot(q, (snapshot) => {
+        const incidents: IncidentReport[] = [];
+        snapshot.forEach(doc => incidents.push(doc.data() as IncidentReport));
+        callback(incidents.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+    });
+};
+
+export const listenToRequests = (callback: (requests: AssetRequest[]) => void) => {
+    if (!db) return () => {};
+    const q = query(collection(db, 'requests'));
+    return onSnapshot(q, (snapshot) => {
+        const requests: AssetRequest[] = [];
+        snapshot.forEach(doc => requests.push(doc.data() as AssetRequest));
+        callback(requests.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+    });
+};
+
+export const listenToInvoices = (callback: (invoices: Invoice[]) => void) => {
+    if (!db) return () => {};
+    const q = query(collection(db, 'invoices'));
+    return onSnapshot(q, (snapshot) => {
+        const invoices: Invoice[] = [];
+        snapshot.forEach(doc => invoices.push(doc.data() as Invoice));
+        callback(invoices.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    });
+};
+
+export const listenToProjects = (callback: (projects: Project[]) => void) => {
+    if (!db) return () => {};
+    const q = query(collection(db, 'projects'));
+    return onSnapshot(q, (snapshot) => {
+        const projects: Project[] = [];
+        snapshot.forEach(doc => projects.push(doc.data() as Project));
+        callback(projects);
+    });
+};
+
+// --- DANGER ZONE: RESET DATABASE ---
+export const resetDatabase = async () => {
+    if (!db) return;
+    const collectionsToReset = [
+        'assets', 'logs', 'incidents', 'requests', 'invoices', 
+        'documents', 'pendingHandovers', 'projects'
+    ];
+    
+    // Deleting collections via Client SDK requires deleting documents one by one
+    // We use batches for efficiency (max 500 ops per batch)
+    
+    for (const colName of collectionsToReset) {
+        const q = query(collection(db, colName));
+        const snapshot = await getDocs(q);
+        
+        if (snapshot.empty) continue;
+
+        const batch = writeBatch(db);
+        let count = 0;
+        
+        snapshot.forEach(doc => {
+            batch.delete(doc.ref);
+            count++;
+        });
+
+        await batch.commit();
+        console.log(`Reset: Cleared ${count} documents from ${colName}`);
+    }
+    // Note: 'users' and 'settings' are preserved
 };
 
 // --- Auth ---
@@ -209,7 +292,6 @@ export const saveAppConfig = async (config: AppConfig): Promise<void> => {
 export const addAssetLog = async (assetId: string, action: AssetLog['action'], details: string, documentId?: string, ticketId?: string) => {
     if (!db) return;
     
-    // Construct log object carefully to avoid undefined fields which setDoc rejects
     const log: any = {
         id: 'log-' + Math.random().toString(36).substr(2, 9),
         assetId,
@@ -219,7 +301,6 @@ export const addAssetLog = async (assetId: string, action: AssetLog['action'], d
         timestamp: new Date().toISOString(),
     };
     
-    // Only add optional fields if they are defined
     if (documentId !== undefined) log.documentId = documentId;
     if (ticketId !== undefined) log.ticketId = ticketId;
 
@@ -255,14 +336,13 @@ export const createIncidentReport = async (data: Omit<IncidentReport, 'id' | 'ti
     const ticketNumber = 'TKT-' + Math.floor(1000 + Math.random() * 9000);
     const id = 'inc-' + Math.random().toString(36).substr(2, 9);
     
-    // Clean data to remove undefined fields
     const cleanData = removeUndefined(data);
 
     const report: IncidentReport = {
         id,
         ticketNumber,
         ...cleanData,
-        status: 'New', // Default status for public reports
+        status: 'New', 
         createdAt: new Date().toISOString()
     };
     
@@ -270,21 +350,16 @@ export const createIncidentReport = async (data: Omit<IncidentReport, 'id' | 'ti
     return id;
 };
 
-// Internal Access: Updating Status
 export const updateIncidentReport = async (id: string, updates: Partial<IncidentReport>, resolveAsset?: boolean) => {
     if (!db) return;
     const reportRef = doc(db, 'incidents', id);
     
-    // Check previous status to trigger logic if changing from New -> Open
     const snap = await getDoc(reportRef);
     const currentData = snap.data() as IncidentReport;
-
-    // Clean updates to remove undefined fields
     const cleanUpdates = removeUndefined(updates);
 
     await updateDoc(reportRef, cleanUpdates);
 
-    // If approving a New ticket, set Asset to Under Repair
     if (currentData.status === 'New' && updates.status === 'Open' && currentData.assetId) {
         const assetRef = doc(db, 'assets', currentData.assetId);
         await updateDoc(assetRef, { 
@@ -294,7 +369,6 @@ export const updateIncidentReport = async (id: string, updates: Partial<Incident
         await addAssetLog(currentData.assetId, 'Ticket', `Ticket ${currentData.ticketNumber} Approved & Opened. Priority: ${currentData.priority}`, undefined, id);
     }
 
-    // If resolving and asset exists, optionally set asset back to Active
     if (resolveAsset && updates.status === 'Resolved' && currentData.assetId) {
         const assetRef = doc(db, 'assets', currentData.assetId);
         await updateDoc(assetRef, { 
@@ -305,7 +379,6 @@ export const updateIncidentReport = async (id: string, updates: Partial<Incident
     }
 };
 
-// --- Asset Replacement Workflow ---
 export const processAssetReplacement = async (
     ticketId: string,
     oldAssetId: string,
@@ -314,7 +387,6 @@ export const processAssetReplacement = async (
 ) => {
     if (!db) return;
 
-    // 1. Fetch details
     const oldAssetRef = doc(db, 'assets', oldAssetId);
     const newAssetRef = doc(db, 'assets', newAssetId);
     const oldAssetSnap = await getDoc(oldAssetRef);
@@ -324,15 +396,13 @@ export const processAssetReplacement = async (
     const oldAssetData = oldAssetSnap.data() as Asset;
     const newAssetData = newAssetSnap.data() as Asset;
 
-    // 2. Retire Old Asset
     await updateDoc(oldAssetRef, {
         status: 'Retired',
-        assignedEmployee: '', // Clear assignment
+        assignedEmployee: '',
         lastUpdated: new Date().toISOString()
     });
     await addAssetLog(oldAssetId, 'Retired', `Retired via Ticket. Replaced by ${newAssetData.name} (${newAssetData.serialNumber})`, undefined, ticketId);
 
-    // 3. Activate New Asset (Inherit Location/Dept/Assignment)
     await updateDoc(newAssetRef, {
         status: 'Active',
         location: oldAssetData.location,
@@ -342,7 +412,6 @@ export const processAssetReplacement = async (
     });
     await addAssetLog(newAssetId, 'Replaced', `Deployed as replacement for ${oldAssetData.name} (${oldAssetData.serialNumber})`, undefined, ticketId);
     
-    // 4. Resolve Ticket
     const ticketRef = doc(db, 'incidents', ticketId);
     await updateDoc(ticketRef, {
         status: 'Resolved',
@@ -394,7 +463,6 @@ export const fulfillAssetRequest = async (requestId: string, assetId: string, no
 
     const assetRef = doc(db, 'assets', assetId);
     
-    // Assign asset to requester
     await updateDoc(assetRef, {
         assignedEmployee: requestData.requesterName,
         status: 'Active',
@@ -403,7 +471,6 @@ export const fulfillAssetRequest = async (requestId: string, assetId: string, no
     });
     await addAssetLog(assetId, 'Assigned', `Assigned via Request ${requestData.requestNumber} to ${requestData.requesterName}`);
 
-    // Update Request
     await updateDoc(requestRef, {
         status: 'Fulfilled',
         linkedAssetId: assetId,
@@ -425,6 +492,34 @@ export const saveInvoice = async (invoice: Invoice): Promise<void> => {
     if (!db) return;
     const cleanInvoice = removeUndefined(invoice);
     await setDoc(doc(db, 'invoices', invoice.id), cleanInvoice);
+
+    if (invoice.linkedAssetIds && invoice.linkedAssetIds.length > 0) {
+        const perItemCost = invoice.amount && invoice.linkedAssetIds.length > 0
+            ? Number((invoice.amount / invoice.linkedAssetIds.length).toFixed(2))
+            : undefined;
+
+        await Promise.all(invoice.linkedAssetIds.map(async (assetId) => {
+            const assetRef = doc(db!, 'assets', assetId);
+            
+            const updates: any = {
+                purchaseDate: invoice.date,
+                supplier: invoice.vendor,
+                lastUpdated: new Date().toISOString()
+            };
+
+            if (perItemCost !== undefined && perItemCost > 0) {
+                updates.purchaseCost = perItemCost;
+            }
+
+            await updateDoc(assetRef, updates);
+            
+            await addAssetLog(
+                assetId, 
+                'Updated', 
+                `Linked to Invoice #${invoice.invoiceNumber}. Supplier: ${invoice.vendor}, Date: ${invoice.date}${perItemCost ? `, Cost: ${perItemCost}` : ''}`
+            );
+        }));
+    }
 };
 
 export const deleteInvoice = async (id: string): Promise<void> => {
@@ -523,7 +618,6 @@ export const getAssets = async (): Promise<Asset[]> => {
 export const saveAsset = async (asset: Asset): Promise<void> => {
     if (!db) return;
     const isNew = !asset.lastUpdated;
-    // Ensure no undefined values in asset object
     const cleanAsset = removeUndefined(asset);
 
     await setDoc(doc(db, 'assets', asset.id), {
@@ -543,12 +637,12 @@ export const deleteAsset = async (id: string): Promise<void> => {
     await deleteDoc(doc(db, 'assets', id));
 };
 
-export const importAssetsFromCSV = async (newAssets: Asset[]): Promise<void> => {
+export const importAssetsBulk = async (newAssets: Asset[]): Promise<void> => {
     if (!db) return;
     await Promise.all(newAssets.map(async a => {
         const cleanAsset = removeUndefined(a);
         await setDoc(doc(db, 'assets', a.id), cleanAsset);
-        await addAssetLog(a.id, 'Created', 'Imported via CSV');
+        await addAssetLog(a.id, 'Created', 'Imported via Bulk Import');
     }));
 };
 
@@ -634,9 +728,7 @@ export const deleteProject = async (id: string): Promise<void> => {
     await deleteDoc(doc(db, 'projects', id));
 };
 
-export const getOverdueItems = async (): Promise<{project: string, item: ProjectItem}[]> => {
-  if (!db) return [];
-  const projects = await getProjects();
+export const getOverdueItems = async (projects: Project[]): Promise<{project: string, item: ProjectItem}[]> => {
   const today = new Date();
   const notifications: {project: string, item: ProjectItem}[] = [];
   projects.forEach(p => {

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Invoice, Asset } from '../types';
-import { getInvoices, saveInvoice, deleteInvoice, getAssets, getCurrentUserProfile } from '../services/storageService';
+import { listenToInvoices, listenToAssets, saveInvoice, deleteInvoice, getCurrentUserProfile } from '../services/storageService';
 import { Receipt, Plus, Search, Trash2, Download, FileText, CheckSquare, Loader2, X, Paperclip } from 'lucide-react';
 
 const Invoices: React.FC = () => {
@@ -25,16 +25,15 @@ const Invoices: React.FC = () => {
     const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'technician';
 
     useEffect(() => {
-        loadData();
-    }, []);
-
-    const loadData = async () => {
         setLoading(true);
-        const [i, a] = await Promise.all([getInvoices(), getAssets()]);
-        setInvoices(i);
-        setAssets(a);
+        const unsubInvoices = listenToInvoices((data) => setInvoices(data));
+        const unsubAssets = listenToAssets((data) => setAssets(data));
         setLoading(false);
-    };
+        return () => {
+            unsubInvoices();
+            unsubAssets();
+        }
+    }, []);
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -73,7 +72,7 @@ const Invoices: React.FC = () => {
                 createdAt: new Date().toISOString()
             };
             await saveInvoice(newInvoice);
-            await loadData();
+            // Listener updates list
             setIsCreating(false);
             resetForm();
         } catch (error) {
@@ -96,7 +95,6 @@ const Invoices: React.FC = () => {
     const handleDelete = async (id: string) => {
         if (window.confirm("Are you sure you want to delete this invoice?")) {
             await deleteInvoice(id);
-            await loadData();
         }
     };
 

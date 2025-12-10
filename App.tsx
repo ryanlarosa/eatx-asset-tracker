@@ -14,8 +14,8 @@ import AssetRequests from './components/AssetRequests';
 import PublicReportIssue from './components/PublicReportIssue';
 import PublicAssetRequest from './components/PublicAssetRequest';
 import Invoices from './components/Invoices';
-import { Asset, AssetStatus, UserRole } from './types';
-import { getAssets, saveAsset, deleteAsset, getStats, getOverdueItems, subscribeToAuth, loginUser, logoutUser, getCurrentUserProfile, checkEnvStatus } from './services/storageService';
+import { Asset, AssetStatus, UserRole, Project } from './types';
+import { saveAsset, deleteAsset, getStats, getOverdueItems, subscribeToAuth, loginUser, logoutUser, getCurrentUserProfile, checkEnvStatus, listenToAssets, listenToProjects } from './services/storageService';
 
 const Sidebar = ({ notificationCount, onLogout }: { notificationCount: number, onLogout: () => void }) => {
   const location = useLocation();
@@ -138,6 +138,7 @@ const ProtectedRoute = ({ children, requiredRole }: { children?: React.ReactNode
 
 const App = () => {
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [notificationCount, setNotificationCount] = useState(0);
   const [view, setView] = useState<'list' | 'form'>('list');
@@ -151,24 +152,33 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  const refreshData = async () => {
-    setLoading(true);
-    const data = await getAssets();
-    setAssets(data);
-    const overdue = await getOverdueItems();
-    setNotificationCount(overdue.length);
-    setLoading(false);
-  };
-
+  // Real-time listeners for App-wide data (Assets & Notifications)
   useEffect(() => {
-    if (user) {
-        refreshData();
-    }
+    if (!user) return;
+    setLoading(true);
+    
+    // Subscribe to Assets
+    const unsubscribeAssets = listenToAssets((data) => {
+        setAssets(data);
+        setLoading(false);
+    });
+
+    // Subscribe to Projects (for Notification Count)
+    const unsubscribeProjects = listenToProjects(async (data) => {
+        setProjects(data);
+        const overdue = await getOverdueItems(data);
+        setNotificationCount(overdue.length);
+    });
+
+    return () => {
+        unsubscribeAssets();
+        unsubscribeProjects();
+    };
   }, [user]);
 
   const handleSaveAsset = async (asset: Asset) => {
     await saveAsset(asset);
-    await refreshData();
+    // No need to manually refresh - listener handles it
     setView('list');
     setEditingAsset(null);
   };
@@ -176,7 +186,6 @@ const App = () => {
   const handleDeleteAsset = async (id: string) => {
     try {
         await deleteAsset(id);
-        await refreshData();
     } catch (error) {
         console.error("Delete failed", error);
     }
@@ -246,7 +255,6 @@ const App = () => {
                                             onEdit={(a) => { setEditingAsset(a); setView('form'); }} 
                                             onDuplicate={handleDuplicate}
                                             onDelete={handleDeleteAsset} 
-                                            onRefresh={refreshData} 
                                         />
                                     )}
                                 </div>

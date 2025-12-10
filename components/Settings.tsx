@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
-import { getAppConfig, saveAppConfig, getAssets, getCurrentUserProfile, getAllUsers, updateUserRole, adminCreateUser } from '../services/storageService';
+import { getAppConfig, saveAppConfig, getAssets, getCurrentUserProfile, getAllUsers, updateUserRole, adminCreateUser, resetDatabase } from '../services/storageService';
 import { AppConfig, UserProfile, UserRole } from '../types';
-import { Plus, X, Shield, Users, Loader2, Check, Mail, Lock, AlertTriangle } from 'lucide-react';
+import { Plus, X, Shield, Users, Loader2, Check, Mail, Lock, AlertTriangle, Trash2 } from 'lucide-react';
 
 const Settings: React.FC = () => {
   const [config, setConfig] = useState<AppConfig>({ categories: [], locations: [], departments: [] });
@@ -20,10 +21,13 @@ const Settings: React.FC = () => {
   const [newUserRole, setNewUserRole] = useState<UserRole>('viewer');
   const [isCreatingUser, setIsCreatingUser] = useState(false);
 
+  // Constraint Checking State
+  const [checkingItem, setCheckingItem] = useState<string | null>(null);
+
   // Delete Confirmation State
   const [deleteConfirmation, setDeleteConfirmation] = useState<{
     isOpen: boolean;
-    type: 'category' | 'location' | 'department' | null;
+    type: 'category' | 'location' | 'department' | 'reset' | null;
     value: string;
   }>({ isOpen: false, type: null, value: '' });
 
@@ -41,6 +45,16 @@ const Settings: React.FC = () => {
     init();
   }, [isAdmin]);
 
+  const showSuccess = (msg: string) => {
+    setSuccessMsg(msg);
+    setTimeout(() => setSuccessMsg(''), 4000);
+  };
+
+  const showError = (msg: string) => {
+    setErrorMsg(msg);
+    setTimeout(() => setErrorMsg(''), 5000);
+  };
+
   const refreshUsers = async () => {
     setIsLoadingUsers(true);
     try {
@@ -54,11 +68,9 @@ const Settings: React.FC = () => {
       try {
           await updateUserRole(uid, newRole);
           setUsers(users.map(u => u.uid === uid ? { ...u, role: newRole } : u));
-          setSuccessMsg(`User role updated to ${newRole}`);
-          setTimeout(() => setSuccessMsg(''), 3000);
+          showSuccess(`User role updated to ${newRole}`);
       } catch (e) {
-          setErrorMsg("Failed to update role");
-          setTimeout(() => setErrorMsg(''), 3000);
+          showError("Failed to update role");
       }
   };
 
@@ -66,7 +78,7 @@ const Settings: React.FC = () => {
       e.preventDefault();
       if (!newUserEmail || !newUserPass) return;
       if (newUserPass.length < 6) {
-          setErrorMsg("Password must be at least 6 characters.");
+          showError("Password must be at least 6 characters.");
           return;
       }
 
@@ -77,13 +89,12 @@ const Settings: React.FC = () => {
           setNewUserEmail('');
           setNewUserPass('');
           await refreshUsers();
-          setSuccessMsg(`User ${newUserEmail} created successfully.`);
-          setTimeout(() => setSuccessMsg(''), 4000);
+          showSuccess(`User ${newUserEmail} created successfully.`);
       } catch(e: any) {
           if (e.code === 'auth/email-already-in-use') {
-              setErrorMsg("Email already exists.");
+              showError("Email already exists.");
           } else {
-              setErrorMsg("Failed to create user. " + e.message);
+              showError("Failed to create user. " + e.message);
           }
       } finally {
           setIsCreatingUser(false);
@@ -100,13 +111,19 @@ const Settings: React.FC = () => {
   };
 
   const requestDeleteCategory = async (cat: string) => {
-      const assets = await getAssets();
-      if (assets.some(a => a.category === cat)) {
-          setErrorMsg(`Cannot delete category '${cat}' because it is in use by active assets.`);
-          setTimeout(() => setErrorMsg(''), 4000);
-          return;
+      setCheckingItem(cat);
+      try {
+        const assets = await getAssets();
+        if (assets.some(a => a.category === cat)) {
+            showError(`Cannot delete '${cat}': Linked to active assets.`);
+            return;
+        }
+        setDeleteConfirmation({ isOpen: true, type: 'category', value: cat });
+      } catch (e) {
+        showError("Failed to verify assets.");
+      } finally {
+        setCheckingItem(null);
       }
-      setDeleteConfirmation({ isOpen: true, type: 'category', value: cat });
   };
 
   const handleAddLocation = async () => {
@@ -119,13 +136,19 @@ const Settings: React.FC = () => {
   };
   
   const requestDeleteLocation = async (loc: string) => {
-      const assets = await getAssets();
-      if (assets.some(a => a.location === loc)) {
-          setErrorMsg(`Cannot delete location '${loc}' because it is in use by active assets.`);
-          setTimeout(() => setErrorMsg(''), 4000);
-          return;
+      setCheckingItem(loc);
+      try {
+        const assets = await getAssets();
+        if (assets.some(a => a.location === loc)) {
+            showError(`Cannot delete '${loc}': Linked to active assets.`);
+            return;
+        }
+        setDeleteConfirmation({ isOpen: true, type: 'location', value: loc });
+      } catch (e) {
+        showError("Failed to verify assets.");
+      } finally {
+        setCheckingItem(null);
       }
-      setDeleteConfirmation({ isOpen: true, type: 'location', value: loc });
   };
 
   const handleAddDepartment = async () => {
@@ -139,17 +162,35 @@ const Settings: React.FC = () => {
   };
 
   const requestDeleteDepartment = async (dept: string) => {
-      const assets = await getAssets();
-      if (assets.some(a => a.department === dept)) {
-          setErrorMsg(`Cannot delete department '${dept}' because it is in use.`);
-          setTimeout(() => setErrorMsg(''), 4000);
-          return;
+      setCheckingItem(dept);
+      try {
+        const assets = await getAssets();
+        if (assets.some(a => a.department === dept)) {
+            showError(`Cannot delete '${dept}': Linked to active assets.`);
+            return;
+        }
+        setDeleteConfirmation({ isOpen: true, type: 'department', value: dept });
+      } catch (e) {
+        showError("Failed to verify assets.");
+      } finally {
+        setCheckingItem(null);
       }
-      setDeleteConfirmation({ isOpen: true, type: 'department', value: dept });
+  };
+
+  const requestResetDatabase = () => {
+      setDeleteConfirmation({ isOpen: true, type: 'reset', value: 'ALL DATA' });
   };
 
   const confirmDelete = async () => {
       const { type, value } = deleteConfirmation;
+      
+      if (type === 'reset') {
+          await resetDatabase();
+          showSuccess("Database has been reset.");
+          setDeleteConfirmation({ isOpen: false, type: null, value: '' });
+          return;
+      }
+
       if (!type || !value) return;
 
       let updated = { ...config };
@@ -165,6 +206,7 @@ const Settings: React.FC = () => {
       setConfig(updated);
       await saveAppConfig(updated);
       setDeleteConfirmation({ isOpen: false, type: null, value: '' });
+      showSuccess(`${value} deleted.`);
   };
 
   if (!isAdmin) {
@@ -178,7 +220,7 @@ const Settings: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6 relative">
+    <div className="space-y-6 relative pb-12">
       <div className="flex items-center justify-between">
          <h1 className="text-2xl font-bold text-slate-800">System Configuration</h1>
          <div className="flex items-center gap-2 text-xs font-mono text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">
@@ -186,9 +228,6 @@ const Settings: React.FC = () => {
              <span>Connected to Cloud</span>
          </div>
       </div>
-
-      {successMsg && <div className="bg-emerald-50 text-emerald-700 px-4 py-3 rounded-lg flex items-center gap-2 text-sm"><Check size={16} /> {successMsg}</div>}
-      {errorMsg && <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2 text-sm"><X size={16} /> {errorMsg}</div>}
 
       {/* User Management */}
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
@@ -306,7 +345,13 @@ const Settings: React.FC = () => {
             {config.categories.map(cat => (
               <div key={cat} className="flex justify-between items-center p-2 bg-slate-50 rounded-lg border border-slate-100 group hover:border-slate-300">
                 <span className="text-sm font-medium text-slate-700">{cat}</span>
-                <button onClick={() => requestDeleteCategory(cat)} className="text-slate-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"><X size={16} /></button>
+                <button 
+                    onClick={() => requestDeleteCategory(cat)} 
+                    disabled={checkingItem === cat}
+                    className="text-slate-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-100"
+                >
+                    {checkingItem === cat ? <Loader2 size={16} className="animate-spin text-slate-400"/> : <X size={16} />}
+                </button>
               </div>
             ))}
           </div>
@@ -323,7 +368,13 @@ const Settings: React.FC = () => {
             {config.locations.map(loc => (
               <div key={loc} className="flex justify-between items-center p-2 bg-slate-50 rounded-lg border border-slate-100 group hover:border-slate-300">
                 <span className="text-sm font-medium text-slate-700">{loc}</span>
-                <button onClick={() => requestDeleteLocation(loc)} className="text-slate-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"><X size={16} /></button>
+                <button 
+                    onClick={() => requestDeleteLocation(loc)} 
+                    disabled={checkingItem === loc}
+                    className="text-slate-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-100"
+                >
+                    {checkingItem === loc ? <Loader2 size={16} className="animate-spin text-slate-400"/> : <X size={16} />}
+                </button>
               </div>
             ))}
           </div>
@@ -340,11 +391,46 @@ const Settings: React.FC = () => {
             {(config.departments || []).map(dept => (
               <div key={dept} className="flex justify-between items-center p-2 bg-slate-50 rounded-lg border border-slate-100 group hover:border-slate-300">
                 <span className="text-sm font-medium text-slate-700">{dept}</span>
-                <button onClick={() => requestDeleteDepartment(dept)} className="text-slate-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"><X size={16} /></button>
+                <button 
+                    onClick={() => requestDeleteDepartment(dept)} 
+                    disabled={checkingItem === dept}
+                    className="text-slate-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-100"
+                >
+                    {checkingItem === dept ? <Loader2 size={16} className="animate-spin text-slate-400"/> : <X size={16} />}
+                </button>
               </div>
             ))}
           </div>
         </div>
+      </div>
+
+      {/* Danger Zone */}
+      <div className="bg-red-50 p-6 rounded-xl border border-red-100 mt-8">
+          <div className="flex items-center gap-3 mb-2 text-red-700">
+              <AlertTriangle size={24} />
+              <h3 className="font-bold text-lg">Danger Zone</h3>
+          </div>
+          <p className="text-red-600 text-sm mb-4">Irreversible actions. Proceed with caution.</p>
+          <button 
+            onClick={requestResetDatabase}
+            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 shadow-sm"
+          >
+              <Trash2 size={16} /> Reset Database (Clear All Data)
+          </button>
+      </div>
+
+      {/* Toast Notifications (Fixed) */}
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none">
+          {successMsg && (
+            <div className="bg-emerald-600 text-white px-4 py-3 rounded-lg shadow-lg shadow-emerald-200 flex items-center gap-2 text-sm animate-in slide-in-from-bottom-5 pointer-events-auto">
+                <Check size={18} /> {successMsg}
+            </div>
+          )}
+          {errorMsg && (
+            <div className="bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg shadow-red-200 flex items-center gap-2 text-sm animate-in slide-in-from-bottom-5 pointer-events-auto">
+                <AlertTriangle size={18} /> {errorMsg}
+            </div>
+          )}
       </div>
 
       {/* Confirmation Modal */}
@@ -354,9 +440,14 @@ const Settings: React.FC = () => {
                 <div className="flex flex-col items-center text-center gap-4">
                     <div className="bg-red-50 p-3 rounded-full text-red-600"><AlertTriangle size={32} /></div>
                     <div>
-                        <h3 className="text-xl font-bold text-slate-900">Delete {deleteConfirmation.type === 'category' ? 'Category' : deleteConfirmation.type === 'location' ? 'Location' : 'Department'}?</h3>
+                        <h3 className="text-xl font-bold text-slate-900">
+                            {deleteConfirmation.type === 'reset' ? 'Reset Entire Database?' : `Delete ${deleteConfirmation.type}?`}
+                        </h3>
                         <p className="text-slate-500 text-sm mt-2">
-                            Permanently remove <span className="font-semibold text-slate-900">{deleteConfirmation.value}</span> from the system configuration?
+                            {deleteConfirmation.type === 'reset' 
+                                ? "This will PERMANENTLY DELETE all assets, logs, tickets, invoices, and requests. This action cannot be undone."
+                                : <span>Permanently remove <span className="font-semibold text-slate-900">{deleteConfirmation.value}</span> from the system configuration?</span>
+                            }
                         </p>
                     </div>
                     <div className="flex gap-3 w-full mt-4">
@@ -370,7 +461,7 @@ const Settings: React.FC = () => {
                             onClick={confirmDelete} 
                             className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 shadow-lg shadow-red-200"
                         >
-                            Yes, Delete
+                            {deleteConfirmation.type === 'reset' ? 'Yes, Reset Everything' : 'Yes, Delete'}
                         </button>
                     </div>
                 </div>

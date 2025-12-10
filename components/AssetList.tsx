@@ -2,17 +2,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Asset, ASSET_STATUSES, AssetStatus } from '../types';
 import { Edit2, Trash2, Search, MapPin, Tag, User, Upload, Download, FileSpreadsheet, Loader2, AlertTriangle, X, Lock, Copy, Building2, ShoppingCart } from 'lucide-react';
-import { importAssetsFromCSV, getAppConfig, getCurrentUserProfile } from '../services/storageService';
+import { importAssetsBulk, getAppConfig, getCurrentUserProfile } from '../services/storageService';
+import ExcelJS from 'exceljs';
 
 interface AssetListProps {
   assets: Asset[];
   onEdit: (asset: Asset) => void;
   onDuplicate: (asset: Asset) => void;
   onDelete: (id: string) => void;
-  onRefresh: () => void;
 }
 
-const AssetList: React.FC<AssetListProps> = ({ assets, onEdit, onDuplicate, onDelete, onRefresh }) => {
+const AssetList: React.FC<AssetListProps> = ({ assets, onEdit, onDuplicate, onDelete }) => {
   const [searchTerm, setSearchTerm] = useState(() => localStorage.getItem('eatx_filter_search') || '');
   const [filterStatus, setFilterStatus] = useState<string>(() => localStorage.getItem('eatx_filter_status') || 'All');
   const [filterCategory, setFilterCategory] = useState<string>(() => localStorage.getItem('eatx_filter_category') || 'All');
@@ -24,6 +24,7 @@ const AssetList: React.FC<AssetListProps> = ({ assets, onEdit, onDuplicate, onDe
   const [assetToDelete, setAssetToDelete] = useState<Asset | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
   const [locations, setLocations] = useState<string[]>([]);
+  const [departments, setDepartments] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Role Checks
@@ -36,9 +37,10 @@ const AssetList: React.FC<AssetListProps> = ({ assets, onEdit, onDuplicate, onDe
         const config = await getAppConfig();
         setCategories(config.categories);
         setLocations(config.locations);
+        setDepartments(config.departments || []);
     };
     loadConfig();
-  }, [assets]); 
+  }, [assets]);
 
   useEffect(() => {
     localStorage.setItem('eatx_filter_search', searchTerm);
@@ -74,50 +76,151 @@ const AssetList: React.FC<AssetListProps> = ({ assets, onEdit, onDuplicate, onDe
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDownloadTemplate = async () => {
+    const workbook = new ExcelJS.Workbook();
+    
+    // 1. Validator Sheet (Hidden) - Config Data
+    const validatorSheet = workbook.addWorksheet('Validators');
+    validatorSheet.state = 'hidden';
+    
+    // Add data to validators
+    validatorSheet.getColumn(1).values = ['Categories', ...categories];
+    validatorSheet.getColumn(2).values = ['Locations', ...locations];
+    validatorSheet.getColumn(3).values = ['Statuses', ...ASSET_STATUSES];
+    validatorSheet.getColumn(4).values = ['Departments', ...(departments.length > 0 ? departments : ['None'])];
+
+    // 2. Assets Sheet (Main)
+    const sheet = workbook.addWorksheet('Assets');
+    
+    // Headers
+    sheet.columns = [
+        { header: 'Asset Name (Required)', key: 'name', width: 30 },
+        { header: 'Category', key: 'category', width: 25 },
+        { header: 'Status', key: 'status', width: 15 },
+        { header: 'Location', key: 'location', width: 25 },
+        { header: 'Department', key: 'department', width: 20 },
+        { header: 'Serial Number', key: 'serialNumber', width: 20 },
+        { header: 'Supplier / Vendor', key: 'supplier', width: 25 },
+        { header: 'Cost (AED)', key: 'cost', width: 15 },
+        { header: 'Purchase Date (YYYY-MM-DD)', key: 'purchaseDate', width: 25 },
+        { header: 'Assigned Employee', key: 'assignedEmployee', width: 25 },
+        { header: 'Description / Notes', key: 'description', width: 40 },
+    ];
+
+    // Style Header
+    sheet.getRow(1).font = { bold: true };
+    sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }; // Slate-200
+
+    // Add Data Validation (Dropdowns) to Columns
+    // Assuming max 1000 rows for dropdowns to keep file light
+    const rowCount = 1000;
+    
+    // Category (Col B -> Index 2)
+    for (let i = 2; i <= rowCount; i++) {
+        sheet.getCell(`B${i}`).dataValidation = {
+            type: 'list',
+            allowBlank: true,
+            formulae: [`Validators!$A$2:$A$${categories.length + 1}`]
+        };
+    }
+
+    // Status (Col C -> Index 3)
+    for (let i = 2; i <= rowCount; i++) {
+        sheet.getCell(`C${i}`).dataValidation = {
+            type: 'list',
+            allowBlank: false,
+            formulae: [`Validators!$C$2:$C$${ASSET_STATUSES.length + 1}`]
+        };
+        sheet.getCell(`C${i}`).value = 'Active'; // Default value
+    }
+
+    // Location (Col D -> Index 4)
+    for (let i = 2; i <= rowCount; i++) {
+        sheet.getCell(`D${i}`).dataValidation = {
+            type: 'list',
+            allowBlank: true,
+            formulae: [`Validators!$B$2:$B$${locations.length + 1}`]
+        };
+    }
+
+    // Department (Col E -> Index 5)
+    for (let i = 2; i <= rowCount; i++) {
+        sheet.getCell(`E${i}`).dataValidation = {
+            type: 'list',
+            allowBlank: true,
+            formulae: [`Validators!$D$2:$D$${departments.length + 1}`]
+        };
+    }
+
+    // Generate File
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'AssetTrack_Import_Template.xlsx';
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!canEdit) return;
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-        const text = evt.target?.result as string;
-        if (!text) return;
-        setIsImporting(true);
-        try {
-            const lines = text.split('\n').filter(line => line.trim() !== '');
-            const newAssets: Asset[] = [];
-            for (let i = 1; i < lines.length; i++) {
-                const cols = lines[i].split(',');
-                if (cols.length < 3) continue;
-                newAssets.push({
-                    id: 'ast-' + Math.random().toString(36).substr(2, 9),
-                    name: cols[0]?.trim() || 'Imported Asset',
-                    category: cols[1]?.trim() || 'Other',
-                    status: (ASSET_STATUSES.includes(cols[2]?.trim() as AssetStatus) ? cols[2]?.trim() : 'Active') as AssetStatus,
-                    location: cols[3]?.trim() || 'Unknown',
-                    purchaseCost: parseFloat(cols[4]) || 0,
-                    purchaseDate: cols[5]?.trim() || new Date().toISOString().split('T')[0],
-                    serialNumber: cols[6]?.trim() || '',
-                    assignedEmployee: cols[7]?.trim() || '',
-                    description: cols[8]?.trim() || 'Imported from CSV',
-                    supplier: cols[9]?.trim() || '',
-                    lastUpdated: new Date().toISOString()
-                });
-            }
-            if (newAssets.length > 0) {
-                await importAssetsFromCSV(newAssets);
-                onRefresh();
-                alert(`Successfully imported ${newAssets.length} assets.`);
-            }
-        } catch (err) {
-            alert("Error parsing CSV.");
-        } finally {
-            setIsImporting(false);
+    setIsImporting(true);
+    try {
+        const buffer = await file.arrayBuffer();
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(buffer);
+        
+        const sheet = workbook.getWorksheet('Assets') || workbook.worksheets[0];
+        const newAssets: Asset[] = [];
+
+        sheet.eachRow((row, rowNumber) => {
+            if (rowNumber === 1) return; // Skip header
+
+            // Safe value extractor
+            const getVal = (idx: number) => {
+                const val = row.getCell(idx).value;
+                if (val && typeof val === 'object' && 'text' in val) return val.text; // Handle hyperlinks/rich text
+                return val ? String(val).trim() : '';
+            };
+
+            const name = getVal(1);
+            if (!name) return; // Skip empty rows
+
+            newAssets.push({
+                id: 'ast-' + Math.random().toString(36).substr(2, 9),
+                name: name,
+                category: getVal(2) || 'Other',
+                status: (ASSET_STATUSES.includes(getVal(3) as AssetStatus) ? getVal(3) : 'Active') as AssetStatus,
+                location: getVal(4) || 'Head Office',
+                department: getVal(5) || '',
+                serialNumber: getVal(6) || '',
+                supplier: getVal(7) || '',
+                purchaseCost: parseFloat(getVal(8)) || 0,
+                purchaseDate: getVal(9) || new Date().toISOString().split('T')[0],
+                assignedEmployee: getVal(10) || '',
+                description: getVal(11) || 'Imported via Excel',
+                lastUpdated: new Date().toISOString()
+            });
+        });
+
+        if (newAssets.length > 0) {
+            await importAssetsBulk(newAssets);
+            alert(`Successfully imported ${newAssets.length} assets.`);
+        } else {
+            alert("No valid asset data found in file.");
         }
+
+    } catch (err) {
+        console.error(err);
+        alert("Error parsing Excel file. Please use the provided template.");
+    } finally {
+        setIsImporting(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
-    };
-    reader.readAsText(file);
+    }
   };
 
   return (
@@ -131,10 +234,13 @@ const AssetList: React.FC<AssetListProps> = ({ assets, onEdit, onDuplicate, onDe
             </div>
             {canEdit && (
             <div className="flex gap-2">
+                <button onClick={handleDownloadTemplate} className="flex items-center gap-2 px-3 py-2 bg-white text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 text-sm font-medium">
+                    <Download size={16} /> Template
+                </button>
                 <div className="relative">
-                    <input type="file" accept=".csv" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+                    <input type="file" accept=".xlsx, .xls" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
                     <button onClick={() => fileInputRef.current?.click()} disabled={isImporting} className="flex items-center gap-2 px-3 py-2 bg-slate-800 text-white border border-slate-800 rounded-lg hover:bg-slate-900 text-sm font-medium disabled:opacity-50">
-                        {isImporting ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} Import CSV
+                        {isImporting ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} Import Excel
                     </button>
                 </div>
             </div>

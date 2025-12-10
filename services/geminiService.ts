@@ -37,7 +37,7 @@ export const parseAssetDescription = async (text: string): Promise<Partial<any>>
     Rules:
     - Match 'category' to the closest value in the list above. If unsure, use 'Other'.
     - Match 'location' to the closest value in the list above.
-    - If cost is missing, estimate a reasonable market price in AED (United Arab Emirates Dirham).
+    - If cost is mentioned, extract it. If not, omit it.
     - Extract 'assignedEmployee' if mentioned.
     - Extract 'supplier' or 'vendor' if mentioned (e.g. bought from Amazon).
     
