@@ -33,15 +33,13 @@ const firebaseConfig = {
 // --- FALLBACK CONFIGURATION (FOR TESTING) ---
 // Replace these values with your actual Firebase config keys if .env is not available
 const fallbackConfig = {
-  apiKey: "AIzaSyAK1PFmG5-uawZ2-QkCExJAIj3ovr5Gc8k",
-  authDomain: "assettrack-626da.firebaseapp.com",
-  projectId: "assettrack-626da",
-  storageBucket: "assettrack-626da.firebasestorage.app",
-  messagingSenderId: "833915106836",
-  appId: "1:833915106836:web:24f97e6161f3d5ef5f9901",
-  measurementId: "G-T7N92CG779",
+  apiKey: "PASTE_YOUR_API_KEY_HERE",
+  authDomain: "PASTE_YOUR_AUTH_DOMAIN_HERE",
+  projectId: "PASTE_YOUR_PROJECT_ID_HERE",
+  storageBucket: "PASTE_YOUR_STORAGE_BUCKET_HERE",
+  messagingSenderId: "PASTE_YOUR_MESSAGING_SENDER_ID_HERE",
+  appId: "PASTE_YOUR_APP_ID_HERE",
 };
-
 // Determine which config to use: Env vars take precedence, then fallback
 const activeConfig = firebaseConfig.apiKey ? firebaseConfig : fallbackConfig;
 
