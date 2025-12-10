@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Asset, ASSET_STATUSES, AssetStatus } from '../types';
 import { Edit2, Trash2, Search, MapPin, Tag, User, Upload, Download, FileSpreadsheet, Loader2, AlertTriangle, X, Lock, Copy, Building2, ShoppingCart } from 'lucide-react';
@@ -177,7 +176,8 @@ const AssetList: React.FC<AssetListProps> = ({ assets, onEdit, onDuplicate, onDe
         const sheet = workbook.getWorksheet('Assets') || workbook.worksheets[0];
         const newAssets: Asset[] = [];
 
-        sheet.eachRow((row, rowNumber) => {
+        // Fix: Explicitly typing row as any to bypass implicit any error, and rowNumber as number
+        sheet.eachRow((row: any, rowNumber: number) => {
             if (rowNumber === 1) return; // Skip header
 
             // Safe value extractor

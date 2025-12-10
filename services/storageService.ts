@@ -13,55 +13,36 @@ import {
   AssetRequest,
   Invoice,
 } from "../types";
-import { initializeApp, getApps, getApp, deleteApp } from "firebase/app";
-import {
-  getFirestore,
-  collection,
-  getDocs,
-  doc,
-  setDoc,
-  deleteDoc,
-  updateDoc,
-  getDoc,
-  Firestore,
-  query,
-  where,
-  orderBy,
-  addDoc,
-} from "firebase/firestore";
-import {
-  getAuth,
-  signInWithEmailAndPassword,
-  signOut,
-  onAuthStateChanged,
-  Auth,
-  createUserWithEmailAndPassword,
-} from "firebase/auth";
+import firebase from "firebase/compat/app";
+import "firebase/compat/auth";
+import "firebase/compat/firestore";
 
 // --- ENV Configuration ---
 const env = (import.meta as any).env || {};
 
-const fallbackConfig = {
-  apiKey: "AIzaSyAK1PFmG5-uawZ2-QkCExJAIj3ovr5Gc8k",
-  authDomain: "assettrack-626da.firebaseapp.com",
-  projectId: "assettrack-626da",
-  storageBucket: "assettrack-626da.firebasestorage.app",
-  messagingSenderId: "833915106836",
-  appId: "1:833915106836:web:24f97e6161f3d5ef5f9901",
-  measurementId: "G-T7N92CG779",
+const firebaseConfig = {
+  apiKey: env.VITE_FIREBASE_API_KEY,
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: env.VITE_FIREBASE_APP_ID,
+  measurementId: env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
-const firebaseConfig = env.VITE_FIREBASE_API_KEY
-  ? {
-      apiKey: env.VITE_FIREBASE_API_KEY,
-      authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
-      projectId: env.VITE_FIREBASE_PROJECT_ID,
-      storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
-      messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-      appId: env.VITE_FIREBASE_APP_ID,
-      measurementId: env.VITE_FIREBASE_MEASUREMENT_ID,
-    }
-  : fallbackConfig;
+// --- FALLBACK CONFIGURATION (FOR TESTING) ---
+// Replace these values with your actual Firebase config keys if .env is not available
+const fallbackConfig = {
+  apiKey: "PASTE_YOUR_API_KEY_HERE",
+  authDomain: "PASTE_YOUR_AUTH_DOMAIN_HERE",
+  projectId: "PASTE_YOUR_PROJECT_ID_HERE",
+  storageBucket: "PASTE_YOUR_STORAGE_BUCKET_HERE",
+  messagingSenderId: "PASTE_YOUR_MESSAGING_SENDER_ID_HERE",
+  appId: "PASTE_YOUR_APP_ID_HERE",
+};
+
+// Determine which config to use: Env vars take precedence, then fallback
+const activeConfig = firebaseConfig.apiKey ? firebaseConfig : fallbackConfig;
 
 const DEFAULT_CONFIG: AppConfig = {
   categories: [
@@ -85,8 +66,8 @@ const DEFAULT_CONFIG: AppConfig = {
   departments: ["IT", "Finance", "HR", "Operations", "FOH", "BOH", "Creative"],
 };
 
-let db: Firestore | undefined;
-let auth: Auth | undefined;
+let db: firebase.firestore.Firestore | undefined;
+let auth: firebase.auth.Auth | undefined;
 let currentUserProfile: UserProfile | null = null;
 let cachedConfig: AppConfig = DEFAULT_CONFIG;
 
@@ -94,26 +75,40 @@ export const checkEnvStatus = () => {
   if (firebaseConfig.apiKey) {
     return {
       ok: true,
-      message: env.VITE_FIREBASE_API_KEY
-        ? "System Online (Secure ENV)"
-        : "System Online (Fallback Mode)",
+      message: "System Online (Env)",
     };
   }
-  return { ok: false, message: "Configuration Failed" };
+  if (
+    activeConfig.apiKey &&
+    activeConfig.apiKey !== "PASTE_YOUR_API_KEY_HERE"
+  ) {
+    return {
+      ok: true,
+      message: "System Online (Fallback)",
+    };
+  }
+  return {
+    ok: false,
+    message: "Configuration Missing (Check .env or Fallback)",
+  };
 };
 
 try {
-  if (firebaseConfig.apiKey) {
-    const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-    db = getFirestore(app);
-    auth = getAuth(app);
-    console.log(
-      `Firebase initialized successfully via ${
-        env.VITE_FIREBASE_API_KEY ? "ENV" : "Fallback Config"
-      }`
-    );
+  // Check if we have a valid config to use (either from env or fallback that isn't the placeholder)
+  if (
+    activeConfig.apiKey &&
+    activeConfig.apiKey !== "PASTE_YOUR_API_KEY_HERE"
+  ) {
+    if (!firebase.apps.length) {
+      firebase.initializeApp(activeConfig);
+    }
+    db = firebase.firestore();
+    auth = firebase.auth();
+    console.log("Firebase initialized successfully");
   } else {
-    console.warn("Firebase Config missing.");
+    console.warn(
+      "Firebase Config missing. Application running in offline mode."
+    );
   }
 } catch (e) {
   console.error("Firebase Init Error:", e);
@@ -128,11 +123,108 @@ const removeUndefined = (obj: any) => {
   return newObj;
 };
 
+// --- REAL-TIME LISTENERS ---
+
+export const listenToAssets = (callback: (assets: Asset[]) => void) => {
+  if (!db) return () => {};
+  return db.collection("assets").onSnapshot((snapshot) => {
+    const assets: Asset[] = [];
+    snapshot.forEach((doc) => assets.push(doc.data() as Asset));
+    callback(assets);
+  });
+};
+
+export const listenToIncidents = (
+  callback: (incidents: IncidentReport[]) => void
+) => {
+  if (!db) return () => {};
+  return db.collection("incidents").onSnapshot((snapshot) => {
+    const incidents: IncidentReport[] = [];
+    snapshot.forEach((doc) => incidents.push(doc.data() as IncidentReport));
+    callback(
+      incidents.sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )
+    );
+  });
+};
+
+export const listenToRequests = (
+  callback: (requests: AssetRequest[]) => void
+) => {
+  if (!db) return () => {};
+  return db.collection("requests").onSnapshot((snapshot) => {
+    const requests: AssetRequest[] = [];
+    snapshot.forEach((doc) => requests.push(doc.data() as AssetRequest));
+    callback(
+      requests.sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )
+    );
+  });
+};
+
+export const listenToInvoices = (callback: (invoices: Invoice[]) => void) => {
+  if (!db) return () => {};
+  return db.collection("invoices").onSnapshot((snapshot) => {
+    const invoices: Invoice[] = [];
+    snapshot.forEach((doc) => invoices.push(doc.data() as Invoice));
+    callback(
+      invoices.sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      )
+    );
+  });
+};
+
+export const listenToProjects = (callback: (projects: Project[]) => void) => {
+  if (!db) return () => {};
+  return db.collection("projects").onSnapshot((snapshot) => {
+    const projects: Project[] = [];
+    snapshot.forEach((doc) => projects.push(doc.data() as Project));
+    callback(projects);
+  });
+};
+
+// --- DANGER ZONE: RESET DATABASE ---
+export const resetDatabase = async () => {
+  if (!db) return;
+  const collectionsToReset = [
+    "assets",
+    "logs",
+    "incidents",
+    "requests",
+    "invoices",
+    "documents",
+    "pendingHandovers",
+    "projects",
+  ];
+
+  for (const colName of collectionsToReset) {
+    const snapshot = await db.collection(colName).get();
+
+    if (snapshot.empty) continue;
+
+    const batch = db.batch();
+    let count = 0;
+
+    snapshot.forEach((doc) => {
+      batch.delete(doc.ref);
+      count++;
+    });
+
+    await batch.commit();
+    console.log(`Reset: Cleared ${count} documents from ${colName}`);
+  }
+};
+
 // --- Auth ---
 
 export const loginUser = async (email: string, pass: string) => {
   if (!auth) throw new Error("Firebase not initialized.");
-  return await signInWithEmailAndPassword(auth, email, pass);
+  return await auth.signInWithEmailAndPassword(email, pass);
 };
 
 export const adminCreateUser = async (
@@ -142,16 +234,16 @@ export const adminCreateUser = async (
 ) => {
   if (!auth || !db) throw new Error("System offline");
 
-  const secondaryApp = initializeApp(firebaseConfig, "SecondaryApp");
-  const secondaryAuth = getAuth(secondaryApp);
+  // Use activeConfig here to ensure the secondary app uses the correct keys
+  const secondaryApp = firebase.initializeApp(activeConfig, "SecondaryApp");
+  const secondaryAuth = secondaryApp.auth();
 
   try {
-    const userCred = await createUserWithEmailAndPassword(
-      secondaryAuth,
+    const userCred = await secondaryAuth.createUserWithEmailAndPassword(
       email,
       pass
     );
-    const uid = userCred.user.uid;
+    const uid = userCred.user!.uid;
 
     const newProfile: UserProfile = {
       uid,
@@ -159,20 +251,20 @@ export const adminCreateUser = async (
       role,
       displayName: email.split("@")[0],
     };
-    await setDoc(doc(db, "users", uid), newProfile);
-    await signOut(secondaryAuth);
+    await db.collection("users").doc(uid).set(newProfile);
+    await secondaryAuth.signOut();
     return true;
   } catch (error) {
     throw error;
   } finally {
-    await deleteApp(secondaryApp);
+    await secondaryApp.delete();
   }
 };
 
 export const logoutUser = async () => {
   if (!auth) return;
   currentUserProfile = null;
-  return await signOut(auth);
+  return await auth.signOut();
 };
 
 export const getCurrentUserProfile = () => currentUserProfile;
@@ -184,23 +276,23 @@ export const subscribeToAuth = (
     callback(null);
     return () => {};
   }
-  return onAuthStateChanged(auth, async (firebaseUser) => {
+  return auth.onAuthStateChanged(async (firebaseUser) => {
     if (!firebaseUser) {
       currentUserProfile = null;
       callback(null);
       return;
     }
     try {
-      const userRef = doc(db!, "users", firebaseUser.uid);
-      const userSnap = await getDoc(userRef);
+      const userRef = db!.collection("users").doc(firebaseUser.uid);
+      const userSnap = await userRef.get();
       const userEmail = firebaseUser.email?.toLowerCase() || "";
       const isSuperAdmin =
         userEmail === "it@eatx.com" || userEmail.includes("admin");
 
-      if (userSnap.exists()) {
+      if (userSnap.exists) {
         const data = userSnap.data() as UserProfile;
         if (isSuperAdmin && data.role !== "admin") {
-          await updateDoc(userRef, { role: "admin" });
+          await userRef.update({ role: "admin" });
           data.role = "admin";
         }
         currentUserProfile = data;
@@ -211,7 +303,7 @@ export const subscribeToAuth = (
           role: isSuperAdmin ? "admin" : "viewer",
           displayName: userEmail.split("@")[0],
         };
-        await setDoc(userRef, newProfile);
+        await userRef.set(newProfile);
         currentUserProfile = newProfile;
       }
       callback(currentUserProfile);
@@ -223,7 +315,7 @@ export const subscribeToAuth = (
 
 export const getAllUsers = async (): Promise<UserProfile[]> => {
   if (!db) return [];
-  const snapshot = await getDocs(collection(db, "users"));
+  const snapshot = await db.collection("users").get();
   const users: UserProfile[] = [];
   snapshot.forEach((doc) => users.push(doc.data() as UserProfile));
   return users;
@@ -234,8 +326,7 @@ export const updateUserRole = async (
   newRole: UserRole
 ): Promise<void> => {
   if (!db) return;
-  const userRef = doc(db, "users", uid);
-  await updateDoc(userRef, { role: newRole });
+  await db.collection("users").doc(uid).update({ role: newRole });
 };
 
 // --- Config ---
@@ -244,7 +335,7 @@ export const getCachedConfigSync = (): AppConfig => cachedConfig;
 export const getAppConfig = async (): Promise<AppConfig> => {
   if (!db) return DEFAULT_CONFIG;
   try {
-    const snapshot = await getDocs(collection(db, "settings"));
+    const snapshot = await db.collection("settings").get();
     let config: AppConfig | null = null;
     snapshot.forEach((doc) => {
       if (doc.id === "appConfig") config = doc.data() as AppConfig;
@@ -255,7 +346,7 @@ export const getAppConfig = async (): Promise<AppConfig> => {
       cachedConfig = config;
       return config;
     } else {
-      await setDoc(doc(db, "settings", "appConfig"), DEFAULT_CONFIG);
+      await db.collection("settings").doc("appConfig").set(DEFAULT_CONFIG);
       cachedConfig = DEFAULT_CONFIG;
       return DEFAULT_CONFIG;
     }
@@ -267,7 +358,7 @@ export const getAppConfig = async (): Promise<AppConfig> => {
 export const saveAppConfig = async (config: AppConfig): Promise<void> => {
   if (!db) return;
   cachedConfig = config;
-  await setDoc(doc(db, "settings", "appConfig"), config);
+  await db.collection("settings").doc("appConfig").set(config);
 };
 
 // --- Logs ---
@@ -280,7 +371,6 @@ export const addAssetLog = async (
 ) => {
   if (!db) return;
 
-  // Construct log object carefully to avoid undefined fields which setDoc rejects
   const log: any = {
     id: "log-" + Math.random().toString(36).substr(2, 9),
     assetId,
@@ -290,18 +380,19 @@ export const addAssetLog = async (
     timestamp: new Date().toISOString(),
   };
 
-  // Only add optional fields if they are defined
   if (documentId !== undefined) log.documentId = documentId;
   if (ticketId !== undefined) log.ticketId = ticketId;
 
-  await setDoc(doc(db, "logs", log.id), log);
+  await db.collection("logs").doc(log.id).set(log);
 };
 
 export const getAssetLogs = async (assetId: string): Promise<AssetLog[]> => {
   if (!db) return [];
   try {
-    const q = query(collection(db, "logs"), where("assetId", "==", assetId));
-    const snapshot = await getDocs(q);
+    const snapshot = await db
+      .collection("logs")
+      .where("assetId", "==", assetId)
+      .get();
     const logs: AssetLog[] = [];
     snapshot.forEach((doc) => logs.push(doc.data() as AssetLog));
     return logs.sort(
@@ -317,7 +408,7 @@ export const getAssetLogs = async (assetId: string): Promise<AssetLog[]> => {
 
 export const getIncidentReports = async (): Promise<IncidentReport[]> => {
   if (!db) return [];
-  const snapshot = await getDocs(collection(db, "incidents"));
+  const snapshot = await db.collection("incidents").get();
   const incidents: IncidentReport[] = [];
   snapshot.forEach((doc) => incidents.push(doc.data() as IncidentReport));
   return incidents.sort(
@@ -333,47 +424,40 @@ export const createIncidentReport = async (
   const ticketNumber = "TKT-" + Math.floor(1000 + Math.random() * 9000);
   const id = "inc-" + Math.random().toString(36).substr(2, 9);
 
-  // Clean data to remove undefined fields
   const cleanData = removeUndefined(data);
 
   const report: IncidentReport = {
     id,
     ticketNumber,
     ...cleanData,
-    status: "New", // Default status for public reports
+    status: "New",
     createdAt: new Date().toISOString(),
   };
 
-  await setDoc(doc(db, "incidents", id), report);
+  await db.collection("incidents").doc(id).set(report);
   return id;
 };
 
-// Internal Access: Updating Status
 export const updateIncidentReport = async (
   id: string,
   updates: Partial<IncidentReport>,
   resolveAsset?: boolean
 ) => {
   if (!db) return;
-  const reportRef = doc(db, "incidents", id);
+  const reportRef = db.collection("incidents").doc(id);
 
-  // Check previous status to trigger logic if changing from New -> Open
-  const snap = await getDoc(reportRef);
+  const snap = await reportRef.get();
   const currentData = snap.data() as IncidentReport;
-
-  // Clean updates to remove undefined fields
   const cleanUpdates = removeUndefined(updates);
 
-  await updateDoc(reportRef, cleanUpdates);
+  await reportRef.update(cleanUpdates);
 
-  // If approving a New ticket, set Asset to Under Repair
   if (
     currentData.status === "New" &&
     updates.status === "Open" &&
     currentData.assetId
   ) {
-    const assetRef = doc(db, "assets", currentData.assetId);
-    await updateDoc(assetRef, {
+    await db.collection("assets").doc(currentData.assetId).update({
       status: "Under Repair",
       lastUpdated: new Date().toISOString(),
     });
@@ -386,10 +470,8 @@ export const updateIncidentReport = async (
     );
   }
 
-  // If resolving and asset exists, optionally set asset back to Active
   if (resolveAsset && updates.status === "Resolved" && currentData.assetId) {
-    const assetRef = doc(db, "assets", currentData.assetId);
-    await updateDoc(assetRef, {
+    await db.collection("assets").doc(currentData.assetId).update({
       status: "Active",
       lastUpdated: new Date().toISOString(),
     });
@@ -403,7 +485,6 @@ export const updateIncidentReport = async (
   }
 };
 
-// --- Asset Replacement Workflow ---
 export const processAssetReplacement = async (
   ticketId: string,
   oldAssetId: string,
@@ -412,21 +493,19 @@ export const processAssetReplacement = async (
 ) => {
   if (!db) return;
 
-  // 1. Fetch details
-  const oldAssetRef = doc(db, "assets", oldAssetId);
-  const newAssetRef = doc(db, "assets", newAssetId);
-  const oldAssetSnap = await getDoc(oldAssetRef);
-  const newAssetSnap = await getDoc(newAssetRef);
+  const oldAssetRef = db.collection("assets").doc(oldAssetId);
+  const newAssetRef = db.collection("assets").doc(newAssetId);
+  const oldAssetSnap = await oldAssetRef.get();
+  const newAssetSnap = await newAssetRef.get();
 
-  if (!oldAssetSnap.exists() || !newAssetSnap.exists())
+  if (!oldAssetSnap.exists || !newAssetSnap.exists)
     throw new Error("Assets not found");
   const oldAssetData = oldAssetSnap.data() as Asset;
   const newAssetData = newAssetSnap.data() as Asset;
 
-  // 2. Retire Old Asset
-  await updateDoc(oldAssetRef, {
+  await oldAssetRef.update({
     status: "Retired",
-    assignedEmployee: "", // Clear assignment
+    assignedEmployee: "",
     lastUpdated: new Date().toISOString(),
   });
   await addAssetLog(
@@ -437,8 +516,7 @@ export const processAssetReplacement = async (
     ticketId
   );
 
-  // 3. Activate New Asset (Inherit Location/Dept/Assignment)
-  await updateDoc(newAssetRef, {
+  await newAssetRef.update({
     status: "Active",
     location: oldAssetData.location,
     department: oldAssetData.department || "",
@@ -453,19 +531,20 @@ export const processAssetReplacement = async (
     ticketId
   );
 
-  // 4. Resolve Ticket
-  const ticketRef = doc(db, "incidents", ticketId);
-  await updateDoc(ticketRef, {
-    status: "Resolved",
-    resolvedAt: new Date().toISOString(),
-    resolutionNotes: `${notes} (Replaced with ${newAssetData.name})`,
-  });
+  await db
+    .collection("incidents")
+    .doc(ticketId)
+    .update({
+      status: "Resolved",
+      resolvedAt: new Date().toISOString(),
+      resolutionNotes: `${notes} (Replaced with ${newAssetData.name})`,
+    });
 };
 
 // --- Asset Requests ---
 export const getAssetRequests = async (): Promise<AssetRequest[]> => {
   if (!db) return [];
-  const snapshot = await getDocs(collection(db, "requests"));
+  const snapshot = await db.collection("requests").get();
   const requests: AssetRequest[] = [];
   snapshot.forEach((doc) => requests.push(doc.data() as AssetRequest));
   return requests.sort(
@@ -489,7 +568,7 @@ export const createAssetRequest = async (
     status: "New",
     createdAt: new Date().toISOString(),
   };
-  await setDoc(doc(db, "requests", id), request);
+  await db.collection("requests").doc(id).set(request);
   return id;
 };
 
@@ -498,9 +577,8 @@ export const updateAssetRequest = async (
   updates: Partial<AssetRequest>
 ) => {
   if (!db) return;
-  const ref = doc(db, "requests", id);
   const cleanUpdates = removeUndefined(updates);
-  await updateDoc(ref, cleanUpdates);
+  await db.collection("requests").doc(id).update(cleanUpdates);
 };
 
 export const fulfillAssetRequest = async (
@@ -509,15 +587,12 @@ export const fulfillAssetRequest = async (
   notes: string
 ) => {
   if (!db) return;
-  const requestRef = doc(db, "requests", requestId);
-  const requestSnap = await getDoc(requestRef);
-  if (!requestSnap.exists()) return;
+  const requestRef = db.collection("requests").doc(requestId);
+  const requestSnap = await requestRef.get();
+  if (!requestSnap.exists) return;
   const requestData = requestSnap.data() as AssetRequest;
 
-  const assetRef = doc(db, "assets", assetId);
-
-  // Assign asset to requester
-  await updateDoc(assetRef, {
+  await db.collection("assets").doc(assetId).update({
     assignedEmployee: requestData.requesterName,
     status: "Active",
     department: requestData.department,
@@ -529,8 +604,7 @@ export const fulfillAssetRequest = async (
     `Assigned via Request ${requestData.requestNumber} to ${requestData.requesterName}`
   );
 
-  // Update Request
-  await updateDoc(requestRef, {
+  await requestRef.update({
     status: "Fulfilled",
     linkedAssetId: assetId,
     resolvedAt: new Date().toISOString(),
@@ -541,7 +615,7 @@ export const fulfillAssetRequest = async (
 // --- Invoices ---
 export const getInvoices = async (): Promise<Invoice[]> => {
   if (!db) return [];
-  const snapshot = await getDocs(collection(db, "invoices"));
+  const snapshot = await db.collection("invoices").get();
   const invoices: Invoice[] = [];
   snapshot.forEach((doc) => invoices.push(doc.data() as Invoice));
   return invoices.sort(
@@ -552,12 +626,45 @@ export const getInvoices = async (): Promise<Invoice[]> => {
 export const saveInvoice = async (invoice: Invoice): Promise<void> => {
   if (!db) return;
   const cleanInvoice = removeUndefined(invoice);
-  await setDoc(doc(db, "invoices", invoice.id), cleanInvoice);
+  await db.collection("invoices").doc(invoice.id).set(cleanInvoice);
+
+  if (invoice.linkedAssetIds && invoice.linkedAssetIds.length > 0) {
+    const perItemCost =
+      invoice.amount && invoice.linkedAssetIds.length > 0
+        ? Number((invoice.amount / invoice.linkedAssetIds.length).toFixed(2))
+        : undefined;
+
+    await Promise.all(
+      invoice.linkedAssetIds.map(async (assetId) => {
+        const updates: any = {
+          purchaseDate: invoice.date,
+          supplier: invoice.vendor,
+          lastUpdated: new Date().toISOString(),
+        };
+
+        if (perItemCost !== undefined && perItemCost > 0) {
+          updates.purchaseCost = perItemCost;
+        }
+
+        await db!.collection("assets").doc(assetId).update(updates);
+
+        await addAssetLog(
+          assetId,
+          "Updated",
+          `Linked to Invoice #${invoice.invoiceNumber}. Supplier: ${
+            invoice.vendor
+          }, Date: ${invoice.date}${
+            perItemCost ? `, Cost: ${perItemCost}` : ""
+          }`
+        );
+      })
+    );
+  }
 };
 
 export const deleteInvoice = async (id: string): Promise<void> => {
   if (!db) return;
-  await deleteDoc(doc(db, "invoices", id));
+  await db.collection("invoices").doc(id).delete();
 };
 
 // --- Pending Handovers ---
@@ -580,7 +687,7 @@ export const createPendingHandover = async (
     createdBy: currentUserProfile?.email || "Unknown",
     status: "Pending",
   };
-  await setDoc(doc(db, "pendingHandovers", id), pending);
+  await db.collection("pendingHandovers").doc(id).set(pending);
   return id;
 };
 
@@ -588,9 +695,8 @@ export const getPendingHandover = async (
   id: string
 ): Promise<PendingHandover | null> => {
   if (!db) return null;
-  const ref = doc(db, "pendingHandovers", id);
-  const snap = await getDoc(ref);
-  return snap.exists() ? (snap.data() as PendingHandover) : null;
+  const snap = await db.collection("pendingHandovers").doc(id).get();
+  return snap.exists ? (snap.data() as PendingHandover) : null;
 };
 
 export const completePendingHandover = async (
@@ -610,12 +716,11 @@ export const completePendingHandover = async (
     date: new Date().toISOString(),
     type: "Handover",
   };
-  await setDoc(doc(db, "documents", docData.id), docData);
+  await db.collection("documents").doc(docData.id).set(docData);
 
   await Promise.all(
     pending.assetIds.map(async (id) => {
-      const assetRef = doc(db!, "assets", id);
-      await updateDoc(assetRef, {
+      await db!.collection("assets").doc(id).update({
         assignedEmployee: pending.employeeName,
         status: "Active",
         lastUpdated: new Date().toISOString(),
@@ -629,9 +734,10 @@ export const completePendingHandover = async (
     })
   );
 
-  await updateDoc(doc(db, "pendingHandovers", pendingId), {
-    status: "Completed",
-  });
+  await db
+    .collection("pendingHandovers")
+    .doc(pendingId)
+    .update({ status: "Completed" });
 };
 
 // --- Handover Documents ---
@@ -639,7 +745,7 @@ export const saveHandoverDocument = async (
   docData: HandoverDocument
 ): Promise<void> => {
   if (!db) return;
-  await setDoc(doc(db, "documents", docData.id), docData);
+  await db.collection("documents").doc(docData.id).set(docData);
 };
 
 export const getHandoverDocuments = async (
@@ -647,14 +753,14 @@ export const getHandoverDocuments = async (
 ): Promise<HandoverDocument[]> => {
   if (!db) return [];
   try {
-    const q = employeeName
-      ? query(
-          collection(db, "documents"),
-          where("employeeName", "==", employeeName)
-        )
-      : query(collection(db, "documents"), orderBy("date", "desc"));
+    let q: firebase.firestore.Query = db.collection("documents");
+    if (employeeName) {
+      q = q.where("employeeName", "==", employeeName);
+    } else {
+      q = q.orderBy("date", "desc");
+    }
 
-    const snapshot = await getDocs(q);
+    const snapshot = await q.get();
     const docs: HandoverDocument[] = [];
     snapshot.forEach((doc) => docs.push(doc.data() as HandoverDocument));
     return docs;
@@ -668,7 +774,7 @@ export const getHandoverDocuments = async (
 export const getAssets = async (): Promise<Asset[]> => {
   if (!db) return [];
   try {
-    const snapshot = await getDocs(collection(db, "assets"));
+    const snapshot = await db.collection("assets").get();
     const assets: Asset[] = [];
     snapshot.forEach((doc) => assets.push(doc.data() as Asset));
     return assets;
@@ -680,13 +786,15 @@ export const getAssets = async (): Promise<Asset[]> => {
 export const saveAsset = async (asset: Asset): Promise<void> => {
   if (!db) return;
   const isNew = !asset.lastUpdated;
-  // Ensure no undefined values in asset object
   const cleanAsset = removeUndefined(asset);
 
-  await setDoc(doc(db, "assets", asset.id), {
-    ...cleanAsset,
-    lastUpdated: new Date().toISOString(),
-  });
+  await db
+    .collection("assets")
+    .doc(asset.id)
+    .set({
+      ...cleanAsset,
+      lastUpdated: new Date().toISOString(),
+    });
 
   if (isNew) {
     await addAssetLog(asset.id, "Created", `Asset created: ${asset.name}`);
@@ -697,18 +805,16 @@ export const saveAsset = async (asset: Asset): Promise<void> => {
 
 export const deleteAsset = async (id: string): Promise<void> => {
   if (!db) return;
-  await deleteDoc(doc(db, "assets", id));
+  await db.collection("assets").doc(id).delete();
 };
 
-export const importAssetsFromCSV = async (
-  newAssets: Asset[]
-): Promise<void> => {
+export const importAssetsBulk = async (newAssets: Asset[]): Promise<void> => {
   if (!db) return;
   await Promise.all(
     newAssets.map(async (a) => {
       const cleanAsset = removeUndefined(a);
-      await setDoc(doc(db, "assets", a.id), cleanAsset);
-      await addAssetLog(a.id, "Created", "Imported via CSV");
+      await db!.collection("assets").doc(a.id).set(cleanAsset);
+      await addAssetLog(a.id, "Created", "Imported via Bulk Import");
     })
   );
 };
@@ -722,8 +828,7 @@ export const bulkAssignAssets = async (
   if (!db) return;
   await Promise.all(
     assetIds.map(async (id) => {
-      const assetRef = doc(db!, "assets", id);
-      await updateDoc(assetRef, {
+      await db!.collection("assets").doc(id).update({
         assignedEmployee: employeeName,
         status: "Active",
         lastUpdated: new Date().toISOString(),
@@ -740,8 +845,7 @@ export const bulkReturnAssets = async (
   if (!db) return;
   await Promise.all(
     assetIds.map(async (id) => {
-      const assetRef = doc(db!, "assets", id);
-      await updateDoc(assetRef, {
+      await db!.collection("assets").doc(id).update({
         assignedEmployee: "",
         status: "In Storage",
         location: "Head Office", // Default return location
@@ -766,8 +870,7 @@ export const bulkTransferAssets = async (
   if (!db) return;
   await Promise.all(
     assetIds.map(async (id) => {
-      const assetRef = doc(db!, "assets", id);
-      await updateDoc(assetRef, {
+      await db!.collection("assets").doc(id).update({
         assignedEmployee: newEmployee,
         lastUpdated: new Date().toISOString(),
       });
@@ -807,7 +910,7 @@ export const getStats = (assets: Asset[]): AssetStats => {
 
 export const getProjects = async (): Promise<Project[]> => {
   if (!db) return [];
-  const snapshot = await getDocs(collection(db, "projects"));
+  const snapshot = await db.collection("projects").get();
   const projects: Project[] = [];
   snapshot.forEach((doc) => projects.push(doc.data() as Project));
   return projects;
@@ -816,19 +919,17 @@ export const getProjects = async (): Promise<Project[]> => {
 export const saveProject = async (project: Project): Promise<void> => {
   if (!db) return;
   const cleanProject = removeUndefined(project);
-  await setDoc(doc(db, "projects", project.id), cleanProject);
+  await db.collection("projects").doc(project.id).set(cleanProject);
 };
 
 export const deleteProject = async (id: string): Promise<void> => {
   if (!db) return;
-  await deleteDoc(doc(db, "projects", id));
+  await db.collection("projects").doc(id).delete();
 };
 
-export const getOverdueItems = async (): Promise<
-  { project: string; item: ProjectItem }[]
-> => {
-  if (!db) return [];
-  const projects = await getProjects();
+export const getOverdueItems = async (
+  projects: Project[]
+): Promise<{ project: string; item: ProjectItem }[]> => {
   const today = new Date();
   const notifications: { project: string; item: ProjectItem }[] = [];
   projects.forEach((p) => {
