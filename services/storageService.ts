@@ -33,12 +33,13 @@ const firebaseConfig = {
 // --- FALLBACK CONFIGURATION (FOR TESTING) ---
 // Replace these values with your actual Firebase config keys if .env is not available
 const fallbackConfig = {
-  apiKey: "PASTE_YOUR_API_KEY_HERE",
-  authDomain: "PASTE_YOUR_AUTH_DOMAIN_HERE",
-  projectId: "PASTE_YOUR_PROJECT_ID_HERE",
-  storageBucket: "PASTE_YOUR_STORAGE_BUCKET_HERE",
-  messagingSenderId: "PASTE_YOUR_MESSAGING_SENDER_ID_HERE",
-  appId: "PASTE_YOUR_APP_ID_HERE",
+  apiKey: "AIzaSyAK1PFmG5-uawZ2-QkCExJAIj3ovr5Gc8k",
+  authDomain: "assettrack-626da.firebaseapp.com",
+  projectId: "assettrack-626da",
+  storageBucket: "assettrack-626da.firebasestorage.app",
+  messagingSenderId: "833915106836",
+  appId: "1:833915106836:web:24f97e6161f3d5ef5f9901",
+  measurementId: "G-T7N92CG779",
 };
 
 // Determine which config to use: Env vars take precedence, then fallback
@@ -359,6 +360,57 @@ export const saveAppConfig = async (config: AppConfig): Promise<void> => {
   if (!db) return;
   cachedConfig = config;
   await db.collection("settings").doc("appConfig").set(config);
+};
+
+export const renameMasterDataItem = async (
+  type: "category" | "location" | "department",
+  oldName: string,
+  newName: string
+) => {
+  if (!db) return;
+  const config = await getAppConfig();
+
+  // 1. Update Config
+  if (type === "category") {
+    const idx = config.categories.indexOf(oldName);
+    if (idx !== -1) config.categories[idx] = newName;
+  } else if (type === "location") {
+    const idx = config.locations.indexOf(oldName);
+    if (idx !== -1) config.locations[idx] = newName;
+  } else if (type === "department") {
+    const idx = (config.departments || []).indexOf(oldName);
+    if (idx !== -1 && config.departments) config.departments[idx] = newName;
+  }
+  await saveAppConfig(config);
+
+  // 2. Batch Update Linked Assets
+  const fieldName =
+    type === "category"
+      ? "category"
+      : type === "location"
+      ? "location"
+      : "department";
+
+  try {
+    const snapshot = await db
+      .collection("assets")
+      .where(fieldName, "==", oldName)
+      .get();
+
+    if (!snapshot.empty) {
+      const batch = db.batch();
+      snapshot.docs.forEach((doc) => {
+        batch.update(doc.ref, {
+          [fieldName]: newName,
+          lastUpdated: new Date().toISOString(),
+        });
+      });
+      await batch.commit();
+    }
+  } catch (e) {
+    console.error("Error batch updating assets during rename:", e);
+    throw e;
+  }
 };
 
 // --- Logs ---
