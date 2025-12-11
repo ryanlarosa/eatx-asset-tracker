@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { getAppConfig, createAssetRequest } from "../services/storageService";
-import { ShoppingBag, Send, Loader2, CheckCircle } from "lucide-react";
+import {
+  ShoppingBag,
+  Send,
+  Loader2,
+  CheckCircle,
+  Plus,
+  Trash2,
+} from "lucide-react";
 
 const PublicAssetRequest: React.FC = () => {
   const [departments, setDepartments] = useState<string[]>([]);
@@ -12,7 +19,12 @@ const PublicAssetRequest: React.FC = () => {
   // Form
   const [requesterName, setRequesterName] = useState("");
   const [department, setDepartment] = useState("");
-  const [category, setCategory] = useState("");
+
+  // Multiple Items State
+  const [requestItems, setRequestItems] = useState<
+    { id: number; category: string }[]
+  >([{ id: Date.now(), category: "" }]);
+
   const [urgency, setUrgency] = useState("Medium");
   const [reason, setReason] = useState("");
 
@@ -26,17 +38,44 @@ const PublicAssetRequest: React.FC = () => {
     init();
   }, []);
 
+  const addItem = () => {
+    setRequestItems([...requestItems, { id: Date.now(), category: "" }]);
+  };
+
+  const removeItem = (id: number) => {
+    if (requestItems.length === 1) return;
+    setRequestItems(requestItems.filter((i) => i.id !== id));
+  };
+
+  const updateItem = (id: number, value: string) => {
+    setRequestItems(
+      requestItems.map((i) => (i.id === id ? { ...i, category: value } : i))
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate items
+    if (requestItems.some((i) => !i.category)) {
+      alert("Please select a category for all requested items.");
+      return;
+    }
+
     setSubmitting(true);
     try {
-      await createAssetRequest({
-        requesterName,
-        department,
-        category,
-        urgency: urgency as any,
-        reason,
-      });
+      // Create individual request for each item
+      await Promise.all(
+        requestItems.map((item) =>
+          createAssetRequest({
+            requesterName,
+            department,
+            category: item.category,
+            urgency: urgency as any,
+            reason,
+          })
+        )
+      );
       setSubmitted(true);
     } catch (e) {
       alert("Error submitting request. Please try again.");
@@ -63,8 +102,9 @@ const PublicAssetRequest: React.FC = () => {
             Request Submitted
           </h2>
           <p className="text-slate-500 mb-6">
-            Your asset request has been logged. The IT team will review it
-            shortly.
+            Your request for {requestItems.length} asset
+            {requestItems.length > 1 ? "s" : ""} has been logged. The IT team
+            will review it shortly.
           </p>
           <button
             onClick={() => window.location.reload()}
@@ -78,7 +118,7 @@ const PublicAssetRequest: React.FC = () => {
 
   return (
     <div className="min-h-screen w-full bg-slate-50 flex items-center justify-center p-4">
-      <div className="max-w-lg w-full bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden my-8">
+      <div className="max-w-lg w-full bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden my-8 w-full">
         <div className="bg-slate-900 p-6 text-white text-center">
           <div className="flex justify-center mb-3">
             <ShoppingBag size={32} className="text-emerald-400" />
@@ -87,8 +127,11 @@ const PublicAssetRequest: React.FC = () => {
           <p className="text-slate-300 text-sm mt-1">EatX IT Procurement</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 md:p-8 space-y-5">
-          <div>
+        <form
+          onSubmit={handleSubmit}
+          className="p-6 md:p-8 space-y-5 flex flex-col items-center justify-center w-full"
+        >
+          <div className="w-full">
             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
               Your Name
             </label>
@@ -101,52 +144,83 @@ const PublicAssetRequest: React.FC = () => {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                Department
+          <div className="w-full">
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+              Department
+            </label>
+            <select
+              required
+              className="w-full p-3 border border-slate-300 rounded-lg bg-white"
+              value={department}
+              onChange={(e) => setDepartment(e.target.value)}
+            >
+              <option value="">Select...</option>
+              {departments.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Multiple Assets Section */}
+          <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 w-full">
+            <div className="flex justify-between items-center mb-3">
+              <label className="block text-xs font-bold text-slate-500 uppercase">
+                Items Needed
               </label>
-              <select
-                required
-                className="w-full p-3 border border-slate-300 rounded-lg bg-white"
-                value={department}
-                onChange={(e) => setDepartment(e.target.value)}
+              <button
+                type="button"
+                onClick={addItem}
+                className="text-xs flex items-center gap-1 text-emerald-600 font-bold hover:text-emerald-700"
               >
-                <option value="">Select...</option>
-                {departments.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
+                <Plus size={14} /> Add Item
+              </button>
             </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                Asset Category
-              </label>
-              <select
-                required
-                className="w-full p-3 border border-slate-300 rounded-lg bg-white"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-              >
-                <option value="">Select...</option>
-                {categories.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+
+            <div className="space-y-3">
+              {requestItems.map((item, index) => (
+                <div
+                  key={item.id}
+                  className="flex gap-2 items-center animate-in slide-in-from-left-2 fade-in"
+                >
+                  <div className="flex-1">
+                    <select
+                      required
+                      className="w-full p-2.5 border border-slate-300 rounded-lg bg-white text-sm"
+                      value={item.category}
+                      onChange={(e) => updateItem(item.id, e.target.value)}
+                    >
+                      <option value="">Select Category...</option>
+                      {categories.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {requestItems.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeItem(item.id)}
+                      className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Remove Item"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
 
-          <div>
+          <div className="w-full">
             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
               Reason / Justification
             </label>
             <textarea
               required
-              rows={4}
+              rows={3}
               placeholder="Why is this asset needed? e.g. New joiner starting next week..."
               className="w-full p-3 border border-slate-300 rounded-lg"
               value={reason}
@@ -154,7 +228,7 @@ const PublicAssetRequest: React.FC = () => {
             />
           </div>
 
-          <div>
+          <div className="w-full">
             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
               Urgency
             </label>
@@ -185,7 +259,7 @@ const PublicAssetRequest: React.FC = () => {
               <Loader2 className="animate-spin" />
             ) : (
               <>
-                Submit Request <Send size={18} />
+                Submit Request ({requestItems.length}) <Send size={18} />
               </>
             )}
           </button>
