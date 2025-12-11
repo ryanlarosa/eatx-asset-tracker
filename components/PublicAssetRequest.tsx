@@ -7,23 +7,25 @@ import {
   CheckCircle,
   Plus,
   Trash2,
+  User,
+  Users,
 } from "lucide-react";
 
 const PublicAssetRequest: React.FC = () => {
   const [departments, setDepartments] = useState<string[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // Form
-  const [requesterName, setRequesterName] = useState("");
+  const [submitterName, setSubmitterName] = useState("");
+  const [employeeName, setEmployeeName] = useState("");
   const [department, setDepartment] = useState("");
 
-  // Multiple Items State
+  // Multiple Items State (now using 'itemName' instead of 'category' for clarity in UI, though we map to category in DB)
   const [requestItems, setRequestItems] = useState<
-    { id: number; category: string }[]
-  >([{ id: Date.now(), category: "" }]);
+    { id: number; itemName: string }[]
+  >([{ id: Date.now(), itemName: "" }]);
 
   const [urgency, setUrgency] = useState("Medium");
   const [reason, setReason] = useState("");
@@ -32,14 +34,13 @@ const PublicAssetRequest: React.FC = () => {
     const init = async () => {
       const c = await getAppConfig();
       setDepartments(c.departments || []);
-      setCategories(c.categories);
       setLoading(false);
     };
     init();
   }, []);
 
   const addItem = () => {
-    setRequestItems([...requestItems, { id: Date.now(), category: "" }]);
+    setRequestItems([...requestItems, { id: Date.now(), itemName: "" }]);
   };
 
   const removeItem = (id: number) => {
@@ -49,7 +50,7 @@ const PublicAssetRequest: React.FC = () => {
 
   const updateItem = (id: number, value: string) => {
     setRequestItems(
-      requestItems.map((i) => (i.id === id ? { ...i, category: value } : i))
+      requestItems.map((i) => (i.id === id ? { ...i, itemName: value } : i))
     );
   };
 
@@ -57,8 +58,8 @@ const PublicAssetRequest: React.FC = () => {
     e.preventDefault();
 
     // Validate items
-    if (requestItems.some((i) => !i.category)) {
-      alert("Please select a category for all requested items.");
+    if (requestItems.some((i) => !i.itemName.trim())) {
+      alert("Please specify the item name for all requests.");
       return;
     }
 
@@ -68,11 +69,11 @@ const PublicAssetRequest: React.FC = () => {
       await Promise.all(
         requestItems.map((item) =>
           createAssetRequest({
-            requesterName,
+            requesterName: submitterName,
             department,
-            category: item.category,
+            category: item.itemName, // Storing free text item name in category field
             urgency: urgency as any,
-            reason,
+            reason: `For Employee: ${employeeName}\n\n${reason}`, // Append beneficiary info to reason
           })
         )
       );
@@ -103,8 +104,9 @@ const PublicAssetRequest: React.FC = () => {
           </h2>
           <p className="text-slate-500 mb-6">
             Your request for {requestItems.length} asset
-            {requestItems.length > 1 ? "s" : ""} has been logged. The IT team
-            will review it shortly.
+            {requestItems.length > 1 ? "s" : ""} for{" "}
+            <strong>{employeeName}</strong> has been logged. The IT team will
+            review it shortly.
           </p>
           <button
             onClick={() => window.location.reload()}
@@ -131,17 +133,45 @@ const PublicAssetRequest: React.FC = () => {
           onSubmit={handleSubmit}
           className="p-6 md:p-8 space-y-5 flex flex-col items-center justify-center w-full"
         >
-          <div className="w-full">
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-              Your Name
-            </label>
-            <input
-              required
-              placeholder="e.g. Sarah Jones"
-              className="w-full p-3 border border-slate-300 rounded-lg"
-              value={requesterName}
-              onChange={(e) => setRequesterName(e.target.value)}
-            />
+          {/* Requester Info */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+            <div className="w-full">
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                Submitted By (You)
+              </label>
+              <div className="relative">
+                <User
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  size={16}
+                />
+                <input
+                  required
+                  placeholder="Manager Name"
+                  className="w-full pl-9 p-3 border border-slate-300 rounded-lg"
+                  value={submitterName}
+                  onChange={(e) => setSubmitterName(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="w-full">
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                For Employee (User)
+              </label>
+              <div className="relative">
+                <Users
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  size={16}
+                />
+                <input
+                  required
+                  placeholder="New Joiner / Staff Name"
+                  className="w-full pl-9 p-3 border border-slate-300 rounded-lg"
+                  value={employeeName}
+                  onChange={(e) => setEmployeeName(e.target.value)}
+                />
+              </div>
+            </div>
           </div>
 
           <div className="w-full">
@@ -185,19 +215,14 @@ const PublicAssetRequest: React.FC = () => {
                   className="flex gap-2 items-center animate-in slide-in-from-left-2 fade-in"
                 >
                   <div className="flex-1">
-                    <select
+                    <input
                       required
+                      type="text"
+                      placeholder="Item Name (e.g. Laptop, iPhone 15, SIM Card)"
                       className="w-full p-2.5 border border-slate-300 rounded-lg bg-white text-sm"
-                      value={item.category}
+                      value={item.itemName}
                       onChange={(e) => updateItem(item.id, e.target.value)}
-                    >
-                      <option value="">Select Category...</option>
-                      {categories.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </div>
                   {requestItems.length > 1 && (
                     <button
