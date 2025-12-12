@@ -2,7 +2,7 @@
 export type AssetStatus = 'Active' | 'In Storage' | 'Under Repair' | 'Retired' | 'Lost/Stolen';
 export const ASSET_STATUSES: AssetStatus[] = ['Active', 'In Storage', 'Under Repair', 'Retired', 'Lost/Stolen'];
 
-export type UserRole = 'admin' | 'technician' | 'viewer';
+export type UserRole = 'admin' | 'technician' | 'viewer' | 'sandbox_user';
 
 export interface UserProfile {
   uid: string;
@@ -67,7 +67,7 @@ export interface AssetRequest {
   category: string; // What they want (e.g. Laptop)
   urgency: 'Low' | 'Medium' | 'High';
   reason: string;
-  status: 'New' | 'Approved' | 'Fulfilled' | 'Rejected';
+  status: 'New' | 'Acknowledged' | 'Pending Finance' | 'Approved' | 'Deployed' | 'Rejected';
   createdAt: string;
   resolvedAt?: string;
   resolutionNotes?: string;
@@ -119,8 +119,10 @@ export interface AssetStats {
 export interface ProjectItem {
   id: string;
   name: string;
+  description?: string;
   category: string;
   estimatedCost: number;
+  quantity?: number;
   status: 'Pending' | 'Ordered' | 'Received';
   dueDate: string;
 }

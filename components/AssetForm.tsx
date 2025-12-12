@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Asset, ASSET_STATUSES, AssetLog } from '../types';
 import { parseAssetDescription, isAiConfigured } from '../services/geminiService';
@@ -115,23 +114,26 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
   const totalPages = Math.ceil(logs.length / LOGS_PER_PAGE);
   const displayedLogs = logs.slice((historyPage - 1) * LOGS_PER_PAGE, historyPage * LOGS_PER_PAGE);
 
+  const inputClass = "w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-slate-900 dark:focus:ring-blue-600 focus:border-transparent bg-white dark:bg-slate-950 text-slate-900 dark:text-white transition-all";
+  const labelClass = "block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1";
+
   return (
-    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+    <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-bold text-slate-900">
+        <h2 className="text-xl font-bold text-slate-900 dark:text-white">
           {initialData ? 'Edit Asset' : 'Onboard New Asset'}
         </h2>
         {!initialData && aiAvailable && (
-          <div className="flex bg-slate-100 p-1 rounded-lg">
+          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
             <button
               onClick={() => setMode('manual')}
-              className={`px-3 py-1 text-sm font-medium rounded-md transition-all ${mode === 'manual' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`px-3 py-1 text-sm font-medium rounded-md transition-all ${mode === 'manual' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
             >
               Manual
             </button>
             <button
               onClick={() => setMode('ai')}
-              className={`px-3 py-1 text-sm font-medium rounded-md transition-all flex items-center gap-1 ${mode === 'ai' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`px-3 py-1 text-sm font-medium rounded-md transition-all flex items-center gap-1 ${mode === 'ai' ? 'bg-slate-900 dark:bg-blue-600 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
             >
               <Sparkles size={14} /> AI Assist
             </button>
@@ -141,52 +143,53 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
 
       {mode === 'ai' && !initialData ? (
         <div className="space-y-4">
-          <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-            <label className="block text-sm font-medium text-slate-900 mb-2">
+          <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
+            <label className="block text-sm font-medium text-slate-900 dark:text-white mb-2">
               Describe the assets to onboard
             </label>
             <textarea
-              className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-slate-900 min-h-[120px]"
+              className={inputClass}
               placeholder="e.g. Assigned a new MacBook Air M2 to Sarah from HR today, approximate value 4500 AED. Also bought 3 Hikvision security cameras for the warehouse from Jumbo Electronics."
               value={aiInput}
               onChange={(e) => setAiInput(e.target.value)}
+              rows={4}
             />
             <div className="mt-3 flex justify-end">
               <button
                 onClick={handleAiParse}
                 disabled={isAiLoading || !aiInput.trim()}
-                className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-black disabled:opacity-50 transition-colors"
+                className="flex items-center gap-2 bg-slate-900 dark:bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-black dark:hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
                 {isAiLoading ? <Loader2 className="animate-spin" size={18} /> : <Sparkles size={18} />}
                 Generate Details
               </button>
             </div>
-            {error && <p className="text-red-600 text-sm mt-2">{error}</p>}
+            {error && <p className="text-red-600 dark:text-red-400 text-sm mt-2">{error}</p>}
           </div>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Asset Name</label>
+              <label className={labelClass}>Asset Name</label>
               <input
                 required
                 type="text"
                 name="name"
                 value={formData.name}
                 onChange={handleChange}
-                className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
+                className={inputClass}
                 placeholder="e.g. Epson Receipt Printer"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Serial Number</label>
+              <label className={labelClass}>Serial Number</label>
               <input
                 type="text"
                 name="serialNumber"
                 value={formData.serialNumber}
                 onChange={handleChange}
-                className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
+                className={inputClass}
                 placeholder="Optional"
               />
             </div>
@@ -194,12 +197,12 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
+              <label className={labelClass}>Category</label>
               <select
                 name="category"
                 value={formData.category}
                 onChange={handleChange}
-                className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
+                className={inputClass}
               >
                 {categories.map(cat => (
                   <option key={cat} value={cat}>{cat}</option>
@@ -207,12 +210,12 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
+              <label className={labelClass}>Status</label>
               <select
                 name="status"
                 value={formData.status}
                 onChange={handleChange}
-                className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
+                className={inputClass}
               >
                 {ASSET_STATUSES.map(status => (
                   <option key={status} value={status}>{status}</option>
@@ -223,12 +226,12 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Location</label>
+              <label className={labelClass}>Location</label>
                <select
                 name="location"
                 value={formData.location}
                 onChange={handleChange}
-                className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
+                className={inputClass}
               >
                 <option value="" disabled>Select Location</option>
                 {locations.map(loc => (
@@ -237,12 +240,12 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Department</label>
+              <label className={labelClass}>Department</label>
                <select
                 name="department"
                 value={formData.department || ''}
                 onChange={handleChange}
-                className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
+                className={inputClass}
               >
                 <option value="">None</option>
                 {departments.map(d => (
@@ -251,13 +254,13 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
               </select>
             </div>
              <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Assigned Employee</label>
+              <label className={labelClass}>Assigned Employee</label>
               <input
                 type="text"
                 name="assignedEmployee"
                 value={formData.assignedEmployee || ''}
                 onChange={handleChange}
-                className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
+                className={inputClass}
                 placeholder="e.g. John Doe (Optional)"
               />
             </div>
@@ -265,18 +268,18 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Supplier / Vendor</label>
+              <label className={labelClass}>Supplier / Vendor</label>
               <input
                 type="text"
                 name="supplier"
                 value={formData.supplier || ''}
                 onChange={handleChange}
-                className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
+                className={inputClass}
                 placeholder="e.g. Amazon, Jumbo"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Cost (AED)</label>
+              <label className={labelClass}>Cost (AED)</label>
               <input
                 type="number"
                 name="purchaseCost"
@@ -285,44 +288,44 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
                 min="0"
                 step="0.01"
                 placeholder="Optional"
-                className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
+                className={inputClass}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Purchase Date</label>
+              <label className={labelClass}>Purchase Date</label>
               <input
                 type="date"
                 name="purchaseDate"
                 value={formData.purchaseDate || ''}
                 onChange={handleChange}
-                className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
+                className={inputClass}
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Description / Notes</label>
+            <label className={labelClass}>Description / Notes</label>
             <textarea
               name="description"
               value={formData.description}
               onChange={handleChange}
               rows={3}
-              className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
+              className={inputClass}
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+          <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
             <button
               type="button"
               onClick={onCancel}
-              className="px-4 py-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors flex items-center gap-2"
+              className="px-4 py-2 text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-2"
             >
               <X size={18} /> Cancel
             </button>
             <button
               type="submit"
               disabled={isSaving}
-              className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-black shadow-sm transition-colors flex items-center gap-2 disabled:opacity-70"
+              className="px-4 py-2 bg-slate-900 dark:bg-blue-600 text-white rounded-lg hover:bg-black dark:hover:bg-blue-700 shadow-sm transition-colors flex items-center gap-2 disabled:opacity-70"
             >
               {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
               {isSaving ? 'Saving...' : 'Save Asset'}
@@ -333,34 +336,34 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
 
       {/* History Timeline - Redesigned with Accordion & Pagination */}
       {initialData && logs.length > 0 && (
-        <div className="mt-8 pt-8 border-t border-slate-200">
+        <div className="mt-8 pt-8 border-t border-slate-200 dark:border-slate-800">
             <button 
                 type="button"
                 onClick={() => setShowHistory(!showHistory)}
                 className="w-full flex items-center justify-between group"
             >
-                <h3 className="font-bold text-slate-800 flex items-center gap-2 group-hover:text-slate-600 transition-colors">
+                <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2 group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-colors">
                     <Clock size={20} /> Asset History 
-                    <span className="text-xs font-normal text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{logs.length} Events</span>
+                    <span className="text-xs font-normal text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">{logs.length} Events</span>
                 </h3>
                 {showHistory ? <ChevronUp size={20} className="text-slate-400" /> : <ChevronDown size={20} className="text-slate-400" />}
             </button>
             
             {showHistory && (
                 <div className="mt-6 animate-in slide-in-from-top-2 fade-in duration-200">
-                    <div className="space-y-6 relative before:absolute before:left-[19px] before:top-2 before:h-full before:w-[2px] before:bg-slate-100">
+                    <div className="space-y-6 relative before:absolute before:left-[19px] before:top-2 before:h-full before:w-[2px] before:bg-slate-100 dark:before:bg-slate-800">
                         {displayedLogs.map((log) => (
                             <div key={log.id} className="relative flex items-start gap-4">
-                                <div className={`z-10 w-10 h-10 rounded-full flex items-center justify-center border-4 border-white shadow-sm ${log.action === 'Created' ? 'bg-emerald-100 text-emerald-600' : log.action === 'Returned' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-600'}`}>
+                                <div className={`z-10 w-10 h-10 rounded-full flex items-center justify-center border-4 border-white dark:border-slate-900 shadow-sm ${log.action === 'Created' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-400' : log.action === 'Returned' ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/50 dark:text-amber-400' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>
                                     <Circle size={12} fill="currentColor" />
                                 </div>
-                                <div className="flex-1 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                <div className="flex-1 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-lg border border-slate-100 dark:border-slate-800">
                                     <div className="flex justify-between items-start">
-                                        <span className="font-semibold text-slate-800 text-sm">{log.action}</span>
+                                        <span className="font-semibold text-slate-800 dark:text-slate-200 text-sm">{log.action}</span>
                                         <span className="text-xs text-slate-400">{new Date(log.timestamp).toLocaleDateString()} {new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                                     </div>
-                                    <p className="text-sm text-slate-600 mt-1">{log.details}</p>
-                                    <div className="flex items-center gap-1 mt-2 text-xs text-slate-400">
+                                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{log.details}</p>
+                                    <div className="flex items-center gap-1 mt-2 text-xs text-slate-400 dark:text-slate-500">
                                         <User size={12} /> {log.performedBy}
                                     </div>
                                 </div>
@@ -376,7 +379,7 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
                                     type="button" 
                                     onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
                                     disabled={historyPage === 1}
-                                    className="p-1.5 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50 text-slate-600"
+                                    className="p-1.5 rounded border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 text-slate-600 dark:text-slate-400"
                                 >
                                     <ChevronLeft size={16} />
                                 </button>
@@ -384,7 +387,7 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
                                     type="button"
                                     onClick={() => setHistoryPage(p => Math.min(totalPages, p + 1))}
                                     disabled={historyPage === totalPages}
-                                    className="p-1.5 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50 text-slate-600"
+                                    className="p-1.5 rounded border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 text-slate-600 dark:text-slate-400"
                                 >
                                     <ChevronRight size={16} />
                                 </button>

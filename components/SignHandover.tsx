@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getPendingHandover, completePendingHandover } from '../services/storageService';
@@ -106,56 +105,56 @@ const SignHandover: React.FC = () => {
         }
     };
 
-    if (loading) return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><Loader2 className="animate-spin text-slate-900" size={32} /></div>;
+    if (loading) return <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-slate-900 dark:text-white" size={32} /></div>;
 
     if (error) return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-            <div className="bg-white p-8 rounded-xl shadow-lg border border-slate-200 text-center max-w-md">
-                <div className="bg-red-50 p-3 rounded-full text-red-600 w-fit mx-auto mb-4"><AlertTriangle size={32}/></div>
-                <h2 className="text-xl font-bold text-slate-800 mb-2">Link Unavailable</h2>
-                <p className="text-slate-500">{error}</p>
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-slate-900 p-8 rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 text-center max-w-md">
+                <div className="bg-red-50 dark:bg-red-900/30 p-3 rounded-full text-red-600 dark:text-red-400 w-fit mx-auto mb-4"><AlertTriangle size={32}/></div>
+                <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-2">Link Unavailable</h2>
+                <p className="text-slate-500 dark:text-slate-400">{error}</p>
             </div>
         </div>
     );
 
     if (success) return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-            <div className="bg-white p-8 rounded-xl shadow-lg border border-slate-200 text-center max-w-md animate-in fade-in zoom-in">
-                <div className="bg-emerald-50 p-3 rounded-full text-emerald-600 w-fit mx-auto mb-4"><CheckCircle size={32}/></div>
-                <h2 className="text-xl font-bold text-slate-800 mb-2">Asset Handover Completed</h2>
-                <p className="text-slate-500 mb-6">Thank you, {pending?.employeeName}. The assets have been successfully assigned to your profile.</p>
-                <div className="p-4 bg-slate-50 rounded-lg text-sm text-slate-400">You may close this window.</div>
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-slate-900 p-8 rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 text-center max-w-md animate-in fade-in zoom-in">
+                <div className="bg-emerald-50 dark:bg-emerald-900/30 p-3 rounded-full text-emerald-600 dark:text-emerald-400 w-fit mx-auto mb-4"><CheckCircle size={32}/></div>
+                <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-2">Asset Handover Completed</h2>
+                <p className="text-slate-500 dark:text-slate-400 mb-6">Thank you, {pending?.employeeName}. The assets have been successfully assigned to your profile.</p>
+                <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-lg text-sm text-slate-400 dark:text-slate-500">You may close this window.</div>
             </div>
         </div>
     );
 
     return (
-        <div className="min-h-screen bg-slate-50 py-12 px-4">
-            <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden">
-                <div className="bg-slate-900 p-6 text-white text-center">
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-12 px-4">
+            <div className="max-w-2xl mx-auto bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                <div className="bg-slate-900 dark:bg-blue-600 p-6 text-white text-center">
                     <div className="flex justify-center mb-3"><MonitorSmartphone size={32} /></div>
                     <h1 className="text-xl font-bold">EatX Asset Handover</h1>
-                    <p className="text-slate-300 text-sm mt-1">Official Digital Handover Form</p>
+                    <p className="text-slate-300 dark:text-blue-100 text-sm mt-1">Official Digital Handover Form</p>
                 </div>
 
                 <div className="p-6 md:p-8">
                     <div className="mb-6">
-                        <p className="text-slate-600">
-                            Hello <span className="font-bold text-slate-900">{pending?.employeeName}</span>,
+                        <p className="text-slate-600 dark:text-slate-300">
+                            Hello <span className="font-bold text-slate-900 dark:text-white">{pending?.employeeName}</span>,
                         </p>
-                        <p className="text-slate-600 mt-2">
+                        <p className="text-slate-600 dark:text-slate-300 mt-2">
                             Please review the list of company assets below. By signing this document, you acknowledge receipt and agree to maintain them in good condition.
                         </p>
                     </div>
 
-                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-8">
-                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Assets to be assigned</h3>
+                    <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-4 mb-8">
+                        <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Assets to be assigned</h3>
                         <table className="w-full text-sm text-left">
-                            <tbody className="divide-y divide-slate-200">
+                            <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                                 {pending?.assetsSnapshot.map(a => (
                                     <tr key={a.id}>
-                                        <td className="py-3 font-medium text-slate-800">{a.name}</td>
-                                        <td className="py-3 text-slate-500 font-mono text-right">{a.serialNumber || 'N/A'}</td>
+                                        <td className="py-3 font-medium text-slate-800 dark:text-slate-200">{a.name}</td>
+                                        <td className="py-3 text-slate-500 dark:text-slate-400 font-mono text-right">{a.serialNumber || 'N/A'}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -164,10 +163,11 @@ const SignHandover: React.FC = () => {
 
                     <div className="mb-6">
                         <div className="flex justify-between items-end mb-2">
-                            <label className="block text-sm font-bold text-slate-700"><PenTool size={16} className="inline mr-1"/> Your Signature</label>
-                            <button onClick={clearCanvas} className="text-xs text-red-600 hover:underline">Clear Signature</button>
+                            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300"><PenTool size={16} className="inline mr-1"/> Your Signature</label>
+                            <button onClick={clearCanvas} className="text-xs text-red-600 dark:text-red-400 hover:underline">Clear Signature</button>
                         </div>
-                        <div className="border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 touch-none">
+                        <div className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-200 touch-none">
+                            {/* Canvas background kept light for ink visibility */}
                             <canvas
                                 ref={canvasRef}
                                 width={600}
@@ -188,7 +188,7 @@ const SignHandover: React.FC = () => {
                     <button
                         onClick={handleSubmit}
                         disabled={!hasSignature || isSubmitting}
-                        className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-black disabled:opacity-50 transition-all flex justify-center items-center gap-2"
+                        className="w-full bg-slate-900 dark:bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-black dark:hover:bg-blue-700 disabled:opacity-50 transition-all flex justify-center items-center gap-2"
                     >
                         {isSubmitting ? <Loader2 className="animate-spin" /> : 'Confirm & Sign'}
                     </button>

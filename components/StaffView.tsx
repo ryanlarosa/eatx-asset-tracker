@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Asset, UserProfile, HandoverDocument } from '../types';
 import { listenToAssets, bulkAssignAssets, bulkReturnAssets, bulkTransferAssets, getCurrentUserProfile, saveHandoverDocument, getHandoverDocuments, createPendingHandover } from '../services/storageService';
@@ -288,40 +287,42 @@ const StaffView: React.FC = () => {
   };
 
   if (!canEdit) {
-      return <div className="p-8 text-center text-slate-500">You do not have permission to manage staff assets.</div>;
+      return <div className="p-8 text-center text-slate-500 dark:text-slate-400">You do not have permission to manage staff assets.</div>;
   }
+
+  const inputClass = "w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-slate-900 dark:focus:ring-blue-600 bg-white dark:bg-slate-950 text-slate-900 dark:text-white";
 
   return (
     <div className="space-y-6 relative">
       <header className="flex flex-col md:flex-row justify-between md:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Staff & Audit</h1>
-          <p className="text-slate-500 text-sm">Onboard new hires or offboard leaving staff.</p>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Staff & Audit</h1>
+          <p className="text-slate-500 dark:text-slate-400 text-sm">Onboard new hires or offboard leaving staff.</p>
         </div>
-        <div className="flex bg-slate-100 p-1 rounded-lg self-start">
-            <button onClick={() => setView('manage')} className={`px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 ${view === 'manage' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>
+        <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg self-start">
+            <button onClick={() => setView('manage')} className={`px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 ${view === 'manage' ? 'bg-white dark:bg-slate-700 shadow text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>
                 <UserIcon size={16} /> Asset Management
             </button>
-            <button onClick={() => setView('documents')} className={`px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 ${view === 'documents' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>
+            <button onClick={() => setView('documents')} className={`px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 ${view === 'documents' ? 'bg-white dark:bg-slate-700 shadow text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>
                 <FileText size={16} /> Signed Documents
             </button>
         </div>
       </header>
 
-      {successMsg && <div className="bg-emerald-50 text-emerald-700 p-4 rounded-lg flex items-center gap-2 animate-in slide-in-from-top-2"><CheckCircle size={18} /> {successMsg}</div>}
+      {successMsg && <div className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 p-4 rounded-lg flex items-center gap-2 animate-in slide-in-from-top-2 border border-emerald-100 dark:border-emerald-900/30"><CheckCircle size={18} /> {successMsg}</div>}
 
       {view === 'manage' ? (
         <>
-            <div className="flex bg-slate-100 p-1 rounded-lg w-fit mb-4">
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg w-fit mb-4">
             <button 
                 onClick={() => { setMode('onboard'); setSearchTerm(''); setSelectedAssetIds(new Set()); setSelectedEmployee(null); }}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center gap-2 ${mode === 'onboard' ? 'bg-slate-900 text-white shadow' : 'text-slate-500'}`}
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center gap-2 ${mode === 'onboard' ? 'bg-slate-900 dark:bg-blue-600 text-white shadow' : 'text-slate-500 dark:text-slate-400'}`}
             >
                 <Briefcase size={16} /> Onboard (Assign)
             </button>
             <button 
                 onClick={() => { setMode('offboard'); setSearchTerm(''); setSelectedAssetIds(new Set()); setSelectedEmployee(null); }}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center gap-2 ${mode === 'offboard' ? 'bg-slate-900 text-white shadow' : 'text-slate-500'}`}
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center gap-2 ${mode === 'offboard' ? 'bg-slate-900 dark:bg-blue-600 text-white shadow' : 'text-slate-500 dark:text-slate-400'}`}
             >
                 <Archive size={16} /> Offboard (Return)
             </button>
@@ -329,20 +330,20 @@ const StaffView: React.FC = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Left Panel: Search & Actions */}
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-fit">
-            <h2 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm h-fit">
+            <h2 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
                 {mode === 'onboard' ? '1. Select Assets' : '1. Find Employee'}
             </h2>
             
             {mode === 'offboard' && selectedEmployee ? (
-                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-6">
-                    <div className="text-xs text-slate-500 uppercase font-bold mb-1">Selected Employee</div>
+                <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg border border-slate-200 dark:border-slate-700 mb-6">
+                    <div className="text-xs text-slate-500 dark:text-slate-400 uppercase font-bold mb-1">Selected Employee</div>
                     <div className="flex items-center justify-between">
-                        <div className="font-bold text-slate-800 flex items-center gap-2">
-                            <div className="bg-slate-200 p-1.5 rounded-full"><UserIcon size={16}/></div>
+                        <div className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                            <div className="bg-slate-200 dark:bg-slate-700 p-1.5 rounded-full"><UserIcon size={16}/></div>
                             {selectedEmployee}
                         </div>
-                        <button onClick={() => { setSelectedEmployee(null); setSelectedAssetIds(new Set()); }} className="text-xs text-blue-600 hover:underline">Change</button>
+                        <button onClick={() => { setSelectedEmployee(null); setSelectedAssetIds(new Set()); }} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">Change</button>
                     </div>
                 </div>
             ) : (
@@ -353,16 +354,16 @@ const StaffView: React.FC = () => {
                     placeholder={mode === 'onboard' ? "Filter assets (e.g. Laptop)..." : "Search Employee Name..."}
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900"
+                    className="w-full pl-10 pr-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-slate-900 dark:focus:ring-blue-600 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                     />
                     
                     {mode === 'offboard' && searchTerm && (
-                        <div className="mt-2 max-h-40 overflow-y-auto border border-slate-100 rounded-lg bg-white shadow-sm">
+                        <div className="mt-2 max-h-40 overflow-y-auto border border-slate-100 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 shadow-sm custom-scrollbar">
                             {matchedEmployees.length > 0 ? matchedEmployees.map(emp => (
                                 <div 
                                     key={emp} 
                                     onClick={() => { setSelectedEmployee(emp); setSearchTerm(''); }}
-                                    className="p-2 hover:bg-slate-50 cursor-pointer text-sm text-slate-700 flex items-center gap-2"
+                                    className="p-2 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer text-sm text-slate-700 dark:text-slate-300 flex items-center gap-2"
                                 >
                                     <UserIcon size={14} className="text-slate-400"/> {emp}
                                 </div>
@@ -374,24 +375,24 @@ const StaffView: React.FC = () => {
                 </div>
             )}
 
-            <div className="border-t border-slate-100 pt-6">
-                <h2 className="font-bold text-slate-800 mb-4">2. Actions</h2>
+            <div className="border-t border-slate-100 dark:border-slate-800 pt-6">
+                <h2 className="font-bold text-slate-800 dark:text-white mb-4">2. Actions</h2>
                 
                 {mode === 'onboard' ? (
                 <div className="space-y-3">
                     <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Assign To (New Hire)</label>
+                    <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase">Assign To (New Hire)</label>
                     <input 
                         value={targetEmployee}
                         onChange={(e) => setTargetEmployee(e.target.value)}
                         placeholder="Enter Name..."
-                        className="w-full p-2 border border-slate-300 rounded-lg mb-2"
+                        className={inputClass}
                     />
                     </div>
                     <button 
                     onClick={handleAssignClick}
                     disabled={selectedAssetIds.size === 0 || !targetEmployee || isProcessing}
-                    className="w-full bg-slate-900 text-white py-2 rounded-lg font-medium hover:bg-black disabled:opacity-50 flex justify-center items-center gap-2"
+                    className="w-full bg-slate-900 dark:bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-black dark:hover:bg-blue-700 disabled:opacity-50 flex justify-center items-center gap-2"
                     >
                     {isProcessing ? 'Generating...' : <>Generate Sign Link <LinkIcon size={16}/></>}
                     </button>
@@ -402,15 +403,15 @@ const StaffView: React.FC = () => {
                         <button 
                             onClick={handleReturnClick}
                             disabled={selectedAssetIds.size === 0 || isProcessing}
-                            className="w-full bg-slate-100 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-200 disabled:opacity-50 flex justify-center items-center gap-2 border border-slate-200"
+                            className="w-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 py-2 rounded-lg font-medium hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50 flex justify-center items-center gap-2 border border-slate-200 dark:border-slate-700"
                         >
                             <Archive size={16} /> Sign & Return
                         </button>
                         
                         <div className="relative flex py-2 items-center">
-                            <div className="flex-grow border-t border-slate-200"></div>
+                            <div className="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
                             <span className="flex-shrink mx-2 text-slate-400 text-xs uppercase">OR Transfer</span>
-                            <div className="flex-grow border-t border-slate-200"></div>
+                            <div className="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
                         </div>
 
                         <div>
@@ -418,12 +419,12 @@ const StaffView: React.FC = () => {
                             value={targetEmployee}
                             onChange={(e) => setTargetEmployee(e.target.value)}
                             placeholder="Transfer to..."
-                            className="w-full p-2 border border-slate-300 rounded-lg mb-2 text-sm"
+                            className={`mb-2 text-sm ${inputClass}`}
                         />
                         <button 
                             onClick={handleTransferClick}
                             disabled={selectedAssetIds.size === 0 || !targetEmployee || isProcessing}
-                            className="w-full bg-slate-800 text-white py-2 rounded-lg font-medium hover:bg-slate-900 disabled:opacity-50 flex justify-center items-center gap-2"
+                            className="w-full bg-slate-800 dark:bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-slate-900 dark:hover:bg-blue-700 disabled:opacity-50 flex justify-center items-center gap-2"
                         >
                             Sign & Transfer <ArrowRight size={16} />
                         </button>
@@ -435,31 +436,31 @@ const StaffView: React.FC = () => {
             </div>
 
             {/* Right Panel: Asset List */}
-            <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-            <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-                <div className="font-semibold text-slate-700">
+            <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col">
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
+                <div className="font-semibold text-slate-700 dark:text-slate-200">
                 {mode === 'onboard' 
                     ? 'Available Assets (Unassigned)' 
                     : selectedEmployee ? `Assets assigned to ${selectedEmployee}` : 'Select an employee to view assets'}
                 </div>
-                <div className="text-sm text-slate-500">
+                <div className="text-sm text-slate-500 dark:text-slate-400">
                 {selectedAssetIds.size} selected
                 </div>
             </div>
             
-            <div className="flex-1 overflow-y-auto max-h-[600px] p-0 bg-white">
+            <div className="flex-1 overflow-y-auto max-h-[600px] p-0 bg-white dark:bg-slate-900">
                 {filteredAssets.length === 0 ? (
-                <div className="p-12 text-center text-slate-400">
+                <div className="p-12 text-center text-slate-400 dark:text-slate-500">
                     {mode === 'onboard' 
                         ? "No unassigned assets found." 
                         : selectedEmployee ? "No assets assigned to this user." : <div className="flex flex-col items-center gap-2"><Search size={32} className="opacity-20"/><span>Search and select an employee on the left.</span></div>}
                 </div>
                 ) : (
                 <table className="w-full text-left border-collapse">
-                    <thead className="bg-white sticky top-0 z-10 shadow-sm">
-                    <tr className="text-xs uppercase text-slate-500 font-semibold border-b border-slate-100">
+                    <thead className="bg-white dark:bg-slate-900 sticky top-0 z-10 shadow-sm">
+                    <tr className="text-xs uppercase text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-100 dark:border-slate-800">
                         <th className="p-4 w-10">
-                        <input type="checkbox" onChange={selectAll} checked={filteredAssets.length > 0 && selectedAssetIds.size === filteredAssets.length} />
+                        <input type="checkbox" onChange={selectAll} checked={filteredAssets.length > 0 && selectedAssetIds.size === filteredAssets.length} className="rounded border-slate-300 dark:border-slate-600 text-slate-900 dark:text-blue-600 bg-white dark:bg-slate-950 focus:ring-slate-900 dark:focus:ring-blue-600" />
                         </th>
                         <th className="p-4">Asset Name</th>
                         <th className="p-4">Category</th>
@@ -467,17 +468,17 @@ const StaffView: React.FC = () => {
                         {mode === 'onboard' && <th className="p-4">Location</th>}
                     </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-50">
+                    <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
                     {filteredAssets.map(asset => (
-                        <tr key={asset.id} className={`hover:bg-slate-50 cursor-pointer ${selectedAssetIds.has(asset.id) ? 'bg-slate-50' : ''}`} onClick={() => toggleSelection(asset.id)}>
+                        <tr key={asset.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer ${selectedAssetIds.has(asset.id) ? 'bg-slate-50 dark:bg-slate-800/50' : ''}`} onClick={() => toggleSelection(asset.id)}>
                         <td className="p-4" onClick={e => e.stopPropagation()}>
-                            <input type="checkbox" checked={selectedAssetIds.has(asset.id)} onChange={() => toggleSelection(asset.id)} />
+                            <input type="checkbox" checked={selectedAssetIds.has(asset.id)} onChange={() => toggleSelection(asset.id)} className="rounded border-slate-300 dark:border-slate-600 text-slate-900 dark:text-blue-600 bg-white dark:bg-slate-950 focus:ring-slate-900 dark:focus:ring-blue-600" />
                         </td>
-                        <td className="p-4 font-medium text-slate-800">
+                        <td className="p-4 font-medium text-slate-800 dark:text-slate-200">
                             {asset.name}
                             <div className="text-xs text-slate-400">{asset.serialNumber}</div>
                         </td>
-                        <td className="p-4 text-sm text-slate-600">
+                        <td className="p-4 text-sm text-slate-600 dark:text-slate-400">
                             <div className="flex items-center gap-2">
                                 {asset.category.includes('Laptop') ? <Laptop size={14}/> : 
                                 asset.category.includes('Phone') ? <Smartphone size={14}/> : <Monitor size={14}/>}
@@ -485,11 +486,11 @@ const StaffView: React.FC = () => {
                             </div>
                         </td>
                         <td className="p-4">
-                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${asset.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${asset.status === 'Active' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>
                             {asset.status}
                             </span>
                         </td>
-                        {mode === 'onboard' && <td className="p-4 text-sm text-slate-500">{asset.location}</td>}
+                        {mode === 'onboard' && <td className="p-4 text-sm text-slate-500 dark:text-slate-400">{asset.location}</td>}
                         </tr>
                     ))}
                     </tbody>
@@ -502,36 +503,38 @@ const StaffView: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {documents.length > 0 ? documents.map(doc => (
-                <div key={doc.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-                    <div className="p-4 border-b border-slate-100 flex justify-between items-start bg-slate-50">
+                <div key={doc.id} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+                    <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-start bg-slate-50 dark:bg-slate-800/50">
                         <div>
-                            <div className="font-bold text-slate-800">{doc.employeeName}</div>
-                            <div className="text-xs text-slate-500">{new Date(doc.date).toLocaleDateString()} at {new Date(doc.date).toLocaleTimeString()}</div>
+                            <div className="font-bold text-slate-800 dark:text-white">{doc.employeeName}</div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400">{new Date(doc.date).toLocaleDateString()} at {new Date(doc.date).toLocaleTimeString()}</div>
                         </div>
                         <div className="flex flex-col items-end gap-1">
-                             <span className={`text-xs px-2 py-1 rounded-md font-medium ${doc.type === 'Return' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{doc.type}</span>
-                             <button onClick={() => handlePrintDocument(doc)} className="text-xs flex items-center gap-1 text-slate-500 hover:text-slate-900"><Printer size={12}/> Print / PDF</button>
+                             <span className={`text-xs px-2 py-1 rounded-md font-medium ${doc.type === 'Return' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>{doc.type}</span>
+                             <button onClick={() => handlePrintDocument(doc)} className="text-xs flex items-center gap-1 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"><Printer size={12}/> Print / PDF</button>
                         </div>
                     </div>
                     <div className="p-4">
                         <div className="text-xs text-slate-400 uppercase font-bold mb-2">Assets {doc.type === 'Return' ? 'Returned' : 'Handed Over'}</div>
                         <div className="space-y-1 mb-4">
                             {doc.assets.slice(0, 3).map(a => (
-                                <div key={a.id} className="text-sm text-slate-700 flex justify-between">
+                                <div key={a.id} className="text-sm text-slate-700 dark:text-slate-300 flex justify-between">
                                     <span>{a.name}</span>
                                     <span className="text-slate-400 text-xs font-mono">{a.serialNumber}</span>
                                 </div>
                             ))}
                             {doc.assets.length > 3 && <div className="text-xs text-slate-400 italic">+{doc.assets.length - 3} more items</div>}
                         </div>
-                        <div className="border-t border-slate-100 pt-3">
+                        <div className="border-t border-slate-100 dark:border-slate-800 pt-3">
                             <div className="text-xs text-slate-400 mb-1">Signed</div>
-                            <img src={doc.signatureBase64} alt="Sig" className="h-10 opacity-70" />
+                            <div className="bg-white p-1 rounded border border-slate-100 dark:border-slate-800 w-fit">
+                                <img src={doc.signatureBase64} alt="Sig" className="h-8 opacity-90" />
+                            </div>
                         </div>
                     </div>
                 </div>
             )) : (
-                <div className="col-span-full py-12 text-center text-slate-400 bg-white rounded-xl border border-slate-200 border-dashed">
+                <div className="col-span-full py-12 text-center text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 border-dashed">
                     <FileText size={48} className="mx-auto mb-2 opacity-20" />
                     No signed documents found.
                 </div>
@@ -554,27 +557,27 @@ const StaffView: React.FC = () => {
       {/* Link Generated Modal */}
       {linkModal.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 border border-slate-100 animate-in fade-in zoom-in">
+            <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl max-w-md w-full p-6 border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in">
                 <div className="flex justify-between items-start mb-4">
-                    <h3 className="text-lg font-bold text-slate-900">Sign Link Generated</h3>
-                    <button onClick={() => setLinkModal({ ...linkModal, open: false })}><X size={20} className="text-slate-400"/></button>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Sign Link Generated</h3>
+                    <button onClick={() => setLinkModal({ ...linkModal, open: false })}><X size={20} className="text-slate-400 hover:text-slate-300"/></button>
                 </div>
-                <p className="text-slate-600 text-sm mb-4">
-                    A digital handover form has been created for <span className="font-bold">{linkModal.name}</span>. Send this link to the employee to collect their signature.
+                <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
+                    A digital handover form has been created for <span className="font-bold text-slate-900 dark:text-white">{linkModal.name}</span>. Send this link to the employee to collect their signature.
                 </p>
-                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 break-all text-xs font-mono text-slate-600 mb-4 select-all">
+                <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-lg border border-slate-200 dark:border-slate-700 break-all text-xs font-mono text-slate-600 dark:text-slate-300 mb-4 select-all">
                     {linkModal.link}
                 </div>
                 <div className="flex gap-3">
                     <button 
                         onClick={() => navigator.clipboard.writeText(linkModal.link)}
-                        className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium text-sm flex items-center justify-center gap-2"
+                        className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg font-medium text-sm flex items-center justify-center gap-2"
                     >
                         Copy Link
                     </button>
                     <a 
                         href={`mailto:?subject=Asset Handover Signature Required&body=Hello ${linkModal.name},%0D%0A%0D%0APlease review and sign the asset handover form at the following link:%0D%0A%0D%0A${linkModal.link}%0D%0A%0D%0AThank you.`}
-                        className="flex-1 py-2.5 bg-slate-900 hover:bg-black text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2"
+                        className="flex-1 py-2.5 bg-slate-900 dark:bg-blue-600 hover:bg-black dark:hover:bg-blue-700 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2"
                     >
                         Send Email <Mail size={16}/>
                     </a>
