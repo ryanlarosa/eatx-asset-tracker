@@ -27,8 +27,12 @@ export interface HandoverDocument {
   employeeName: string;
   assets: { id: string; name: string; serialNumber: string }[];
   signatureBase64: string;
+  itSignatureBase64?: string;
+  headSignatureBase64?: string;
+  headName?: string;
   date: string;
   type: 'Handover' | 'Return' | 'Transfer';
+  status?: 'Pending' | 'Completed'; // Track multi-step signing progress
 }
 
 export interface PendingHandover {

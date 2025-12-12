@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import { Asset, UserProfile, HandoverDocument } from '../types';
 import { listenToAssets, bulkAssignAssets, bulkReturnAssets, bulkTransferAssets, getCurrentUserProfile, saveHandoverDocument, getHandoverDocuments, createPendingHandover } from '../services/storageService';
-import { Briefcase, Archive, ArrowRight, CheckCircle, Search, Laptop, Smartphone, Monitor, User as UserIcon, AlertTriangle, X, FileText, Download, Link as LinkIcon, Mail, Printer } from 'lucide-react';
+import { Briefcase, Archive, ArrowRight, CheckCircle, Search, Laptop, Smartphone, Monitor, User as UserIcon, AlertTriangle, X, FileText, Download, Link as LinkIcon, Mail, Printer, Clock } from 'lucide-react';
 import HandoverModal from './HandoverModal';
 
 const StaffView: React.FC = () => {
@@ -15,7 +16,6 @@ const StaffView: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   
-  // Link Modal State
   const [linkModal, setLinkModal] = useState<{ open: boolean, link: string, name: string }>({ open: false, link: '', name: '' });
 
   // Signature Modal State
@@ -24,14 +24,16 @@ const StaffView: React.FC = () => {
     type: 'Handover' | 'Return' | 'Transfer';
     employeeName: string;
     targetName?: string;
-    assets: Asset[];
+    assets: Asset[]; // Or derived from assets
+    assetsSnapshot?: { id: string; name: string; serialNumber: string }[]; // For resuming, we use snapshot
+    docId?: string; // If resuming
+    initialData?: { employeeSig?: string, itSig?: string, headSig?: string, headName?: string };
   }>({ isOpen: false, type: 'Handover', employeeName: '', assets: [] });
 
   const currentUser = getCurrentUserProfile();
   const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'technician';
 
   useEffect(() => {
-    // Real-time listener ensures that if asset status changes (e.g. signed elsewhere), it reflects here
     const unsubscribe = listenToAssets((data) => {
         setAssets(data);
     });
@@ -39,7 +41,7 @@ const StaffView: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // Clear selection if assets change status and are no longer valid for current view
+    // Clear selection if assets change status
     setSelectedAssetIds(prev => {
         const newSet = new Set<string>();
         prev.forEach(id => {
@@ -55,25 +57,23 @@ const StaffView: React.FC = () => {
     })
   }, [assets, mode, selectedEmployee]);
 
+  const [documents, setDocuments] = useState<HandoverDocument[]>([]);
   useEffect(() => {
     if (view === 'documents') {
       loadDocuments();
     }
   }, [view]);
 
-  const [documents, setDocuments] = useState<HandoverDocument[]>([]);
   const loadDocuments = async () => {
     const docs = await getHandoverDocuments();
     setDocuments(docs);
   };
 
-  // derived lists
   const uniqueEmployees = Array.from(new Set(assets.map(a => a.assignedEmployee).filter(Boolean) as string[])).sort();
   const matchedEmployees = searchTerm 
     ? uniqueEmployees.filter(e => e.toLowerCase().includes(searchTerm.toLowerCase()))
     : uniqueEmployees;
 
-  // Filter Logic
   const filteredAssets = assets.filter(asset => {
     if (mode === 'offboard') {
       if (!selectedEmployee) return false;
@@ -102,19 +102,14 @@ const StaffView: React.FC = () => {
     }
   };
 
-  // Actions
   const handleAssignClick = async () => {
     if (!targetEmployee || selectedAssetIds.size === 0) return;
     setIsProcessing(true);
     try {
         const selectedAssetsList = assets.filter(a => selectedAssetIds.has(a.id));
         const pendingId = await createPendingHandover(targetEmployee, selectedAssetsList);
-        
-        // Generate Link
         const link = `${window.location.origin}/#/sign/${pendingId}`;
         setLinkModal({ open: true, link, name: targetEmployee });
-        
-        // Reset Selection
         setSelectedAssetIds(new Set());
         setTargetEmployee('');
     } catch (e) {
@@ -145,37 +140,72 @@ const StaffView: React.FC = () => {
       });
   };
 
-  const handleSignatureConfirm = async (signature: string) => {
+  const handleResumeSign = (doc: HandoverDocument) => {
+      setSignModal({
+          isOpen: true,
+          type: doc.type,
+          employeeName: doc.employeeName,
+          assets: [], // We use assetsSnapshot
+          assetsSnapshot: doc.assets,
+          docId: doc.id,
+          initialData: {
+              employeeSig: doc.signatureBase64,
+              itSig: doc.itSignatureBase64,
+              headSig: doc.headSignatureBase64,
+              headName: doc.headName
+          }
+      });
+  };
+
+  const handleSignatureConfirm = async (sigs: { employeeSig: string, itSig?: string, headSig?: string, headName?: string, status: 'Pending' | 'Completed' }) => {
       setIsProcessing(true);
       try {
+          // Use existing ID if resuming, or create new
+          const docId = signModal.docId || 'doc-' + Math.random().toString(36).substr(2, 9);
+          
           const docData: HandoverDocument = {
-              id: 'doc-' + Math.random().toString(36).substr(2, 9),
+              id: docId,
               employeeName: signModal.employeeName,
-              assets: signModal.assets.map(a => ({ id: a.id, name: a.name, serialNumber: a.serialNumber })),
-              signatureBase64: signature,
+              // Use snapshot if resuming, else map current assets
+              assets: signModal.assetsSnapshot || signModal.assets.map(a => ({ id: a.id, name: a.name, serialNumber: a.serialNumber })),
+              signatureBase64: sigs.employeeSig,
+              itSignatureBase64: sigs.itSig,
+              headSignatureBase64: sigs.headSig,
+              headName: sigs.headName,
               date: new Date().toISOString(),
-              type: signModal.type
+              type: signModal.type,
+              status: sigs.status
           };
           
           await saveHandoverDocument(docData);
 
-          const assetIds = signModal.assets.map(a => a.id);
+          const assetIds = signModal.assetsSnapshot ? signModal.assetsSnapshot.map(a => a.id) : signModal.assets.map(a => a.id);
 
+          // Logic: Perform actual asset update ONLY if we haven't done it yet OR if it is finalized.
+          // For Returns: If IT has signed (even if status is pending), we can probably return the assets to storage?
+          // Let's assume if status becomes 'Pending' (Saved at IT step) OR 'Completed', we execute the asset update.
+          // BUT ensure we don't do it multiple times. (bulkReturnAssets logs it).
+          // For simplicity: Always update assets state to reflect current reality.
+          
           if (signModal.type === 'Return') {
-              await bulkReturnAssets(assetIds, docData.id);
-              setSuccessMsg(`Successfully returned ${assetIds.length} assets.`);
+              // If IT signed, we consider them returned to storage
+              if (sigs.itSig) {
+                  await bulkReturnAssets(assetIds, docId);
+              }
+              setSuccessMsg(sigs.status === 'Completed' ? 'Return Finalized.' : 'Progress Saved.');
           } else if (signModal.type === 'Transfer' && signModal.targetName) {
-              await bulkTransferAssets(assetIds, signModal.targetName, docData.id);
+              await bulkTransferAssets(assetIds, signModal.targetName, docId);
               setSuccessMsg(`Successfully transferred assets to ${signModal.targetName}`);
           }
-          // No need to refreshAssets manually, listener will update
           
           setSignModal({ ...signModal, isOpen: false });
           setSelectedAssetIds(new Set());
           setTargetEmployee('');
-          if (selectedAssetIds.size === filteredAssets.length) {
+          if (!signModal.docId && selectedAssetIds.size === filteredAssets.length) {
              setSelectedEmployee(null);
           }
+          if (view === 'documents') loadDocuments();
+          
           setTimeout(() => setSuccessMsg(''), 4000);
       } catch (e) {
           alert("Error processing handover.");
@@ -200,6 +230,45 @@ const StaffView: React.FC = () => {
         ? `I, <b>${doc.employeeName}</b>, confirm the return of the following company assets. I declare that these items are being returned in the condition they were issued, subject to normal wear and tear.`
         : `I, <b>${doc.employeeName}</b>, acknowledge receipt/transfer of the following company assets. I agree to use them for company business and maintain them in good condition.`;
 
+      let footerContent = '';
+      
+      if (doc.type === 'Return') {
+          // If incomplete, hide missing blocks or show blank
+          const empSig = doc.signatureBase64 ? `<img src="${doc.signatureBase64}" class="signature-img" />` : '<div style="height:60px; color:#ccc;">Pending</div>';
+          const itSig = doc.itSignatureBase64 ? `<img src="${doc.itSignatureBase64}" class="signature-img" />` : '<div style="height:60px; color:#ccc;">Pending</div>';
+          const headSig = doc.headSignatureBase64 ? `<img src="${doc.headSignatureBase64}" class="signature-img" />` : '<div style="height:60px; color:#ccc;">Pending</div>';
+
+          footerContent = `
+            <table class="signatures-table">
+                <tr>
+                    <td class="sig-cell">
+                        ${empSig}
+                        <div><strong>Employee:</strong> ${doc.employeeName}</div>
+                        <div class="timestamp">Date: ${dateStr}</div>
+                    </td>
+                    <td class="sig-cell">
+                        ${itSig}
+                        <div><strong>IT Verified</strong></div>
+                        <div class="timestamp">Date: ${dateStr}</div>
+                    </td>
+                    <td class="sig-cell">
+                        ${headSig}
+                        <div><strong>Head:</strong> ${doc.headName || 'Dept Head'}</div>
+                        <div class="timestamp">Date: ${dateStr}</div>
+                    </td>
+                </tr>
+            </table>
+          `;
+      } else {
+          footerContent = `
+            <div class="signature-box">
+                <img src="${doc.signatureBase64}" class="signature-img" alt="Digital Signature" />
+                <div><strong>Signed by:</strong> ${doc.employeeName}</div>
+                <div class="timestamp">Digitally Signed: ${new Date(doc.date).toLocaleString()}</div>
+            </div>
+          `;
+      }
+
       const htmlContent = `
         <!DOCTYPE html>
         <html>
@@ -216,10 +285,17 @@ const StaffView: React.FC = () => {
                 table { width: 100%; border-collapse: collapse; margin-bottom: 40px; }
                 th { background: #eee; text-align: left; padding: 10px; border: 1px solid #ccc; font-size: 12px; text-transform: uppercase; }
                 td { padding: 10px; border: 1px solid #ccc; font-size: 14px; }
+                
                 .footer { margin-top: 60px; page-break-inside: avoid; }
                 .signature-box { border-top: 1px solid #ccc; padding-top: 10px; width: 250px; }
-                .signature-img { max-height: 80px; display: block; margin-bottom: 10px; }
+                .signature-img { max-height: 60px; display: block; margin-bottom: 10px; }
                 .timestamp { font-size: 10px; color: #666; margin-top: 5px; font-family: monospace; }
+
+                /* Multi-sig table */
+                .signatures-table { width: 100%; border: none; margin-top: 20px; }
+                .signatures-table td { border: none; padding: 10px; vertical-align: top; width: 33%; }
+                .sig-cell { border-top: 1px solid #ccc !important; }
+
                 @media print {
                     body { padding: 0; }
                     .no-print { display: none; }
@@ -242,6 +318,7 @@ const StaffView: React.FC = () => {
                 <div class="meta-row">
                     <strong>Document ID:</strong> <span style="font-family: monospace">${doc.id}</span>
                 </div>
+                ${doc.status ? `<div class="meta-row"><strong>Status:</strong> <span>${doc.status}</span></div>` : ''}
             </div>
 
             <div class="declaration">
@@ -268,11 +345,7 @@ const StaffView: React.FC = () => {
             </table>
 
             <div class="footer">
-                <div class="signature-box">
-                    <img src="${doc.signatureBase64}" class="signature-img" alt="Digital Signature" />
-                    <div><strong>Signed by:</strong> ${doc.employeeName}</div>
-                    <div class="timestamp">Digitally Signed: ${new Date(doc.date).toLocaleString()}</div>
-                </div>
+                ${footerContent}
             </div>
             
             <script>
@@ -329,7 +402,6 @@ const StaffView: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left Panel: Search & Actions */}
             <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm h-fit">
             <h2 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
                 {mode === 'onboard' ? '1. Select Assets' : '1. Find Employee'}
@@ -435,7 +507,6 @@ const StaffView: React.FC = () => {
             </div>
             </div>
 
-            {/* Right Panel: Asset List */}
             <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col">
             <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
                 <div className="font-semibold text-slate-700 dark:text-slate-200">
@@ -502,16 +573,19 @@ const StaffView: React.FC = () => {
         </>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {documents.length > 0 ? documents.map(doc => (
-                <div key={doc.id} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-                    <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-start bg-slate-50 dark:bg-slate-800/50">
+            {documents.length > 0 ? documents.map(doc => {
+                const isPendingReturn = doc.type === 'Return' && doc.status !== 'Completed';
+                
+                return (
+                <div key={doc.id} className={`bg-white dark:bg-slate-900 rounded-xl border shadow-sm overflow-hidden hover:shadow-md transition-all ${isPendingReturn ? 'border-amber-200 dark:border-amber-800' : 'border-slate-200 dark:border-slate-800'}`}>
+                    <div className={`p-4 border-b flex justify-between items-start ${isPendingReturn ? 'bg-amber-50/50 dark:bg-amber-900/10 border-amber-100 dark:border-amber-800' : 'bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-800'}`}>
                         <div>
                             <div className="font-bold text-slate-800 dark:text-white">{doc.employeeName}</div>
                             <div className="text-xs text-slate-500 dark:text-slate-400">{new Date(doc.date).toLocaleDateString()} at {new Date(doc.date).toLocaleTimeString()}</div>
                         </div>
                         <div className="flex flex-col items-end gap-1">
                              <span className={`text-xs px-2 py-1 rounded-md font-medium ${doc.type === 'Return' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>{doc.type}</span>
-                             <button onClick={() => handlePrintDocument(doc)} className="text-xs flex items-center gap-1 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"><Printer size={12}/> Print / PDF</button>
+                             {isPendingReturn && <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 animate-pulse bg-amber-50 dark:bg-amber-900/30 px-1.5 rounded border border-amber-200 dark:border-amber-800">Action Required</span>}
                         </div>
                     </div>
                     <div className="p-4">
@@ -526,14 +600,42 @@ const StaffView: React.FC = () => {
                             {doc.assets.length > 3 && <div className="text-xs text-slate-400 italic">+{doc.assets.length - 3} more items</div>}
                         </div>
                         <div className="border-t border-slate-100 dark:border-slate-800 pt-3">
-                            <div className="text-xs text-slate-400 mb-1">Signed</div>
-                            <div className="bg-white p-1 rounded border border-slate-100 dark:border-slate-800 w-fit">
-                                <img src={doc.signatureBase64} alt="Sig" className="h-8 opacity-90" />
+                            <div className="flex items-end justify-between">
+                                <div>
+                                    <div className="text-xs text-slate-400 mb-1">Signed By</div>
+                                    <div className="flex gap-2">
+                                        <div className="bg-white p-1 rounded border border-slate-100 dark:border-slate-800 w-fit">
+                                            {doc.signatureBase64 ? <img src={doc.signatureBase64} alt="Sig" className="h-6 opacity-90" /> : <div className="h-6 w-12 flex items-center justify-center text-[10px] text-slate-300">...</div>}
+                                        </div>
+                                        {doc.type === 'Return' && (
+                                            <>
+                                            <div className="bg-white p-1 rounded border border-slate-100 dark:border-slate-800 w-fit" title="IT Verified">
+                                                {doc.itSignatureBase64 ? <img src={doc.itSignatureBase64} alt="IT" className="h-6 opacity-90" /> : <div className="h-6 w-12 flex items-center justify-center text-[10px] text-slate-300 italic">IT</div>}
+                                            </div>
+                                            <div className="bg-white p-1 rounded border border-slate-100 dark:border-slate-800 w-fit" title={`Head: ${doc.headName}`}>
+                                                {doc.headSignatureBase64 ? <img src={doc.headSignatureBase64} alt="Head" className="h-6 opacity-90" /> : <div className="h-6 w-12 flex items-center justify-center text-[10px] text-slate-300 italic">Head</div>}
+                                            </div>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button onClick={() => handlePrintDocument(doc)} className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-slate-50 dark:bg-slate-800 rounded-lg"><Printer size={16}/></button>
+                                    
+                                    {isPendingReturn && (
+                                        <button 
+                                            onClick={() => handleResumeSign(doc)} 
+                                            className="px-3 py-2 bg-amber-500 text-white rounded-lg text-xs font-bold hover:bg-amber-600 shadow-sm flex items-center gap-1"
+                                        >
+                                            {doc.itSignatureBase64 ? 'Sign (Head)' : 'Sign (IT)'}
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            )) : (
+            )}) : (
                 <div className="col-span-full py-12 text-center text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 border-dashed">
                     <FileText size={48} className="mx-auto mb-2 opacity-20" />
                     No signed documents found.
@@ -546,9 +648,11 @@ const StaffView: React.FC = () => {
       <HandoverModal
         isOpen={signModal.isOpen}
         employeeName={signModal.employeeName}
-        assets={signModal.assets}
+        currentItName={currentUser?.email?.split('@')[0] || 'IT Staff'}
+        assets={signModal.assetsSnapshot || signModal.assets}
         type={signModal.type}
         targetName={signModal.targetName}
+        initialData={signModal.initialData}
         onConfirm={handleSignatureConfirm}
         onCancel={() => setSignModal(prev => ({ ...prev, isOpen: false }))}
         isProcessing={isProcessing}
