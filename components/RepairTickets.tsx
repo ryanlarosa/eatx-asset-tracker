@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
 import { Asset, IncidentReport, UserRole } from '../types';
-import { listenToIncidents, listenToAssets, createIncidentReport, updateIncidentReport, getAppConfig, getCurrentUserProfile, processAssetReplacement } from '../services/storageService';
+import { listenToIncidents, listenToAssets, createIncidentReport, updateIncidentReport, getAppConfig, getCurrentUserProfile, processAssetReplacement, getSandboxStatus } from '../services/storageService';
 import { AlertCircle, CheckCircle, Clock, Search, Filter, Plus, PenTool, Wrench, X, MessageSquare, ArrowRight, Loader2, Link as LinkIcon, ThumbsUp, ThumbsDown, MonitorSmartphone, RefreshCw, AlertTriangle, Image as ImageIcon, Download } from 'lucide-react';
 
 const RepairTickets: React.FC = () => {
@@ -217,7 +218,9 @@ const RepairTickets: React.FC = () => {
     const inputClass = "w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-950 text-slate-900 dark:text-white focus:ring-2 focus:ring-slate-900 dark:focus:ring-blue-600";
     const labelClass = "block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1";
 
-    const publicLink = `${window.location.origin}/#/report-issue`;
+    // Embed env param
+    const isSandbox = getSandboxStatus();
+    const publicLink = `${window.location.origin}/#/report-issue${isSandbox ? '?env=sandbox' : ''}`;
 
     return (
         <div className="space-y-6">

@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import { Asset, AssetRequest } from '../types';
-import { listenToRequests, listenToAssets, updateAssetRequest, fulfillAssetRequest } from '../services/storageService';
-import { ShoppingBag, Clock, CheckCircle, XCircle, ChevronRight, User, AlertCircle, Link as LinkIcon, Box, Loader2, ArrowRight, DollarSign, Send } from 'lucide-react';
+import { listenToRequests, listenToAssets, updateAssetRequest, fulfillAssetRequest, getSandboxStatus } from '../services/storageService';
+import { ShoppingBag, Clock, CheckCircle, XCircle, ChevronRight, User, AlertCircle, Link as LinkIcon, Box, Loader2, ArrowRight, DollarSign, Send, Save } from 'lucide-react';
 
 const AssetRequests: React.FC = () => {
     const [requests, setRequests] = useState<AssetRequest[]>([]);
@@ -19,6 +20,7 @@ const AssetRequests: React.FC = () => {
         setLoading(true);
         const unsubRequests = listenToRequests((data) => {
             setRequests(data);
+            // Update selected request if it exists to keep data fresh
             setSelectedRequest(prev => prev ? data.find(r => r.id === prev.id) || null : null);
         });
         const unsubAssets = listenToAssets((data) => setAssets(data));
@@ -29,6 +31,15 @@ const AssetRequests: React.FC = () => {
         }
     }, []);
 
+    // Sync notes from DB when a request is selected
+    useEffect(() => {
+        if (selectedRequest) {
+            setNotes(selectedRequest.resolutionNotes || '');
+        } else {
+            setNotes('');
+        }
+    }, [selectedRequest?.id]);
+
     const updateStatus = async (status: AssetRequest['status'], notePrefix: string = '') => {
         if (!selectedRequest) return;
         setIsProcessing(true);
@@ -37,10 +48,27 @@ const AssetRequests: React.FC = () => {
                 status,
                 resolutionNotes: notes ? `${notePrefix} ${notes}` : notePrefix
             });
+            // We don't clear notes here immediately if we want to show the result, 
+            // but usually moving stage clears selection or updates UI.
+            // For this flow, let's clear inputs.
             setNotes('');
             setSelectedAssetId('');
         } catch (e) {
             alert("Update failed.");
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleSaveProgress = async () => {
+        if (!selectedRequest) return;
+        setIsProcessing(true);
+        try {
+            await updateAssetRequest(selectedRequest.id, {
+                resolutionNotes: notes
+            });
+        } catch (e) {
+            alert("Failed to save progress.");
         } finally {
             setIsProcessing(false);
         }
@@ -88,7 +116,9 @@ const AssetRequests: React.FC = () => {
         }
     };
 
-    const publicLink = `${window.location.origin}/#/request-asset`;
+    // Embed env param
+    const isSandbox = getSandboxStatus();
+    const publicLink = `${window.location.origin}/#/request-asset${isSandbox ? '?env=sandbox' : ''}`;
 
     return (
         <div className="space-y-6">
@@ -280,12 +310,21 @@ const AssetRequests: React.FC = () => {
                                                         <AlertCircle size={16} className="mt-0.5 shrink-0"/> 
                                                         Waiting for budget/finance approval. Update status once decision is made.
                                                     </div>
-                                                    <textarea 
-                                                        className="w-full p-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 dark:text-white rounded text-sm mb-2" 
-                                                        placeholder="Finance notes / Budget code..."
-                                                        value={notes}
-                                                        onChange={e => setNotes(e.target.value)}
-                                                    />
+                                                    <div className="relative">
+                                                        <textarea 
+                                                            className="w-full p-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 dark:text-white rounded text-sm mb-2 pr-10" 
+                                                            placeholder="Finance notes / Budget code..."
+                                                            value={notes}
+                                                            onChange={e => setNotes(e.target.value)}
+                                                        />
+                                                        <button 
+                                                            onClick={handleSaveProgress}
+                                                            className="absolute top-2 right-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1"
+                                                            title="Save notes only"
+                                                        >
+                                                            <Save size={16} />
+                                                        </button>
+                                                    </div>
                                                     <div className="flex gap-3">
                                                         <button onClick={() => updateStatus('Approved', 'Finance Approved.')} disabled={isProcessing} className="flex-1 bg-indigo-600 text-white py-2 rounded-lg font-bold hover:bg-indigo-700">
                                                             Approve Purchase
@@ -309,12 +348,21 @@ const AssetRequests: React.FC = () => {
                                                         <option value="">Select Asset to Deploy...</option>
                                                         {inventoryAssets.map(a => <option key={a.id} value={a.id}>{a.name} ({a.serialNumber})</option>)}
                                                     </select>
-                                                    <textarea 
-                                                        className="w-full p-2 border border-slate-300 dark:border-slate-700 rounded text-sm mb-2 bg-white dark:bg-slate-950 dark:text-white" 
-                                                        placeholder="Deployment notes..."
-                                                        value={notes}
-                                                        onChange={e => setNotes(e.target.value)}
-                                                    />
+                                                    <div className="relative">
+                                                        <textarea 
+                                                            className="w-full p-2 border border-slate-300 dark:border-slate-700 rounded text-sm mb-2 bg-white dark:bg-slate-950 dark:text-white pr-10" 
+                                                            placeholder="Deployment notes..."
+                                                            value={notes}
+                                                            onChange={e => setNotes(e.target.value)}
+                                                        />
+                                                        <button 
+                                                            onClick={handleSaveProgress}
+                                                            className="absolute top-2 right-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1"
+                                                            title="Save notes only"
+                                                        >
+                                                            <Save size={16} />
+                                                        </button>
+                                                    </div>
                                                     <button 
                                                         onClick={handleDeploy}
                                                         disabled={!selectedAssetId || isProcessing}

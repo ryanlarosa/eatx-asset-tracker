@@ -1,8 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
 import { Asset, ASSET_STATUSES, AssetLog } from '../types';
 import { parseAssetDescription, isAiConfigured } from '../services/geminiService';
 import { getAppConfig, getAssetLogs } from '../services/storageService';
-import { Sparkles, Save, X, Loader2, Clock, User, Circle, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Sparkles, Save, X, Loader2, Clock, User, Circle, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, QrCode } from 'lucide-react';
+import QRCode from 'react-qr-code';
 
 interface AssetFormProps {
   initialData?: Asset | null;
@@ -117,6 +119,9 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
   const inputClass = "w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-slate-900 dark:focus:ring-blue-600 focus:border-transparent bg-white dark:bg-slate-950 text-slate-900 dark:text-white transition-all";
   const labelClass = "block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1";
 
+  // Generate Deep Link URL for QR
+  const qrUrl = initialData ? `${window.location.origin}${window.location.pathname}#/assets?id=${initialData.id}` : '';
+
   return (
     <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
       <div className="flex justify-between items-center mb-6">
@@ -169,149 +174,166 @@ const AssetForm: React.FC<AssetFormProps> = ({ initialData, onSave, onCancel }) 
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className={labelClass}>Asset Name</label>
-              <input
-                required
-                type="text"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                className={inputClass}
-                placeholder="e.g. Epson Receipt Printer"
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Serial Number</label>
-              <input
-                type="text"
-                name="serialNumber"
-                value={formData.serialNumber}
-                onChange={handleChange}
-                className={inputClass}
-                placeholder="Optional"
-              />
-            </div>
-          </div>
+          <div className="flex flex-col-reverse md:flex-row gap-6">
+            <div className="flex-1 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                    <label className={labelClass}>Asset Name</label>
+                    <input
+                        required
+                        type="text"
+                        name="name"
+                        value={formData.name}
+                        onChange={handleChange}
+                        className={inputClass}
+                        placeholder="e.g. Epson Receipt Printer"
+                    />
+                    </div>
+                    <div>
+                    <label className={labelClass}>Serial Number</label>
+                    <input
+                        type="text"
+                        name="serialNumber"
+                        value={formData.serialNumber}
+                        onChange={handleChange}
+                        className={inputClass}
+                        placeholder="Optional"
+                    />
+                    </div>
+                </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className={labelClass}>Category</label>
-              <select
-                name="category"
-                value={formData.category}
-                onChange={handleChange}
-                className={inputClass}
-              >
-                {categories.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className={labelClass}>Status</label>
-              <select
-                name="status"
-                value={formData.status}
-                onChange={handleChange}
-                className={inputClass}
-              >
-                {ASSET_STATUSES.map(status => (
-                  <option key={status} value={status}>{status}</option>
-                ))}
-              </select>
-            </div>
-          </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                    <label className={labelClass}>Category</label>
+                    <select
+                        name="category"
+                        value={formData.category}
+                        onChange={handleChange}
+                        className={inputClass}
+                    >
+                        {categories.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                    </select>
+                    </div>
+                    <div>
+                    <label className={labelClass}>Status</label>
+                    <select
+                        name="status"
+                        value={formData.status}
+                        onChange={handleChange}
+                        className={inputClass}
+                    >
+                        {ASSET_STATUSES.map(status => (
+                        <option key={status} value={status}>{status}</option>
+                        ))}
+                    </select>
+                    </div>
+                </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className={labelClass}>Location</label>
-               <select
-                name="location"
-                value={formData.location}
-                onChange={handleChange}
-                className={inputClass}
-              >
-                <option value="" disabled>Select Location</option>
-                {locations.map(loc => (
-                  <option key={loc} value={loc}>{loc}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className={labelClass}>Department</label>
-               <select
-                name="department"
-                value={formData.department || ''}
-                onChange={handleChange}
-                className={inputClass}
-              >
-                <option value="">None</option>
-                {departments.map(d => (
-                  <option key={d} value={d}>{d}</option>
-                ))}
-              </select>
-            </div>
-             <div>
-              <label className={labelClass}>Assigned Employee</label>
-              <input
-                type="text"
-                name="assignedEmployee"
-                value={formData.assignedEmployee || ''}
-                onChange={handleChange}
-                className={inputClass}
-                placeholder="e.g. John Doe (Optional)"
-              />
-            </div>
-          </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                    <label className={labelClass}>Location</label>
+                    <select
+                        name="location"
+                        value={formData.location}
+                        onChange={handleChange}
+                        className={inputClass}
+                    >
+                        <option value="" disabled>Select Location</option>
+                        {locations.map(loc => (
+                        <option key={loc} value={loc}>{loc}</option>
+                        ))}
+                    </select>
+                    </div>
+                    <div>
+                    <label className={labelClass}>Department</label>
+                    <select
+                        name="department"
+                        value={formData.department || ''}
+                        onChange={handleChange}
+                        className={inputClass}
+                    >
+                        <option value="">None</option>
+                        {departments.map(d => (
+                        <option key={d} value={d}>{d}</option>
+                        ))}
+                    </select>
+                    </div>
+                    <div>
+                    <label className={labelClass}>Assigned Employee</label>
+                    <input
+                        type="text"
+                        name="assignedEmployee"
+                        value={formData.assignedEmployee || ''}
+                        onChange={handleChange}
+                        className={inputClass}
+                        placeholder="e.g. John Doe (Optional)"
+                    />
+                    </div>
+                </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className={labelClass}>Supplier / Vendor</label>
-              <input
-                type="text"
-                name="supplier"
-                value={formData.supplier || ''}
-                onChange={handleChange}
-                className={inputClass}
-                placeholder="e.g. Amazon, Jumbo"
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Cost (AED)</label>
-              <input
-                type="number"
-                name="purchaseCost"
-                value={formData.purchaseCost === undefined ? '' : formData.purchaseCost}
-                onChange={handleChange}
-                min="0"
-                step="0.01"
-                placeholder="Optional"
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Purchase Date</label>
-              <input
-                type="date"
-                name="purchaseDate"
-                value={formData.purchaseDate || ''}
-                onChange={handleChange}
-                className={inputClass}
-              />
-            </div>
-          </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                    <label className={labelClass}>Supplier / Vendor</label>
+                    <input
+                        type="text"
+                        name="supplier"
+                        value={formData.supplier || ''}
+                        onChange={handleChange}
+                        className={inputClass}
+                        placeholder="e.g. Amazon, Jumbo"
+                    />
+                    </div>
+                    <div>
+                    <label className={labelClass}>Cost (AED)</label>
+                    <input
+                        type="number"
+                        name="purchaseCost"
+                        value={formData.purchaseCost === undefined ? '' : formData.purchaseCost}
+                        onChange={handleChange}
+                        min="0"
+                        step="0.01"
+                        placeholder="Optional"
+                        className={inputClass}
+                    />
+                    </div>
+                    <div>
+                    <label className={labelClass}>Purchase Date</label>
+                    <input
+                        type="date"
+                        name="purchaseDate"
+                        value={formData.purchaseDate || ''}
+                        onChange={handleChange}
+                        className={inputClass}
+                    />
+                    </div>
+                </div>
 
-          <div>
-            <label className={labelClass}>Description / Notes</label>
-            <textarea
-              name="description"
-              value={formData.description}
-              onChange={handleChange}
-              rows={3}
-              className={inputClass}
-            />
+                <div>
+                    <label className={labelClass}>Description / Notes</label>
+                    <textarea
+                    name="description"
+                    value={formData.description}
+                    onChange={handleChange}
+                    rows={3}
+                    className={inputClass}
+                    />
+                </div>
+            </div>
+
+            {/* QR Code Section */}
+            {initialData && (
+                <div className="md:w-48 flex flex-col items-center justify-start pt-6">
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center">
+                        <QRCode value={qrUrl} size={128} />
+                        <span className="text-xs font-mono text-slate-500 mt-2">{initialData.id}</span>
+                    </div>
+                    <p className="text-xs text-center text-slate-400 mt-2">
+                        Scan to View Asset
+                    </p>
+                </div>
+            )}
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">

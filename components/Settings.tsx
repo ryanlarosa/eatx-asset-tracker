@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
-import { getAppConfig, saveAppConfig, getAssets, getCurrentUserProfile, getAllUsers, updateUserRole, adminCreateUser, resetDatabase, renameMasterDataItem, getSandboxStatus, setSandboxMode } from '../services/storageService';
-import { AppConfig, UserProfile, UserRole } from '../types';
-import { Plus, X, Shield, Users, Loader2, Check, Mail, Lock, AlertTriangle, Trash2, Edit2, Database } from 'lucide-react';
+import { getAppConfig, saveAppConfig, getAssets, getCurrentUserProfile, getAllUsers, updateUserRole, adminCreateUser, resetDatabase, renameMasterDataItem, getSandboxStatus, setSandboxMode, getEmailConfig, saveEmailConfig, sendSystemEmail } from '../services/storageService';
+import { AppConfig, UserProfile, UserRole, EmailConfig } from '../types';
+import { Plus, X, Shield, Users, Loader2, Check, Mail, Lock, AlertTriangle, Trash2, Edit2, Database, Bell, Save, Send } from 'lucide-react';
 
 const Settings: React.FC = () => {
   const [config, setConfig] = useState<AppConfig>({ categories: [], locations: [], departments: [] });
@@ -14,6 +15,11 @@ const Settings: React.FC = () => {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   
+  // Email Config State
+  const [emailConfig, setEmailConfig] = useState<EmailConfig>({ serviceId: '', templateId: '', publicKey: '', targetEmail: '', enabled: false });
+  const [isSavingEmail, setIsSavingEmail] = useState(false);
+  const [isTestingEmail, setIsTestingEmail] = useState(false);
+
   // Create User State
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPass, setNewUserPass] = useState('');
@@ -50,6 +56,8 @@ const Settings: React.FC = () => {
   useEffect(() => {
     const init = async () => {
         setConfig(await getAppConfig());
+        const mailConf = await getEmailConfig();
+        if (mailConf) setEmailConfig(mailConf);
         if (isAdmin) {
             refreshUsers();
         }
@@ -110,6 +118,43 @@ const Settings: React.FC = () => {
           }
       } finally {
           setIsCreatingUser(false);
+      }
+  };
+
+  const handleSaveEmailConfig = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setIsSavingEmail(true);
+      try {
+          await saveEmailConfig(emailConfig);
+          showSuccess("Email preferences saved.");
+      } catch(e) {
+          showError("Failed to save email settings.");
+      } finally {
+          setIsSavingEmail(false);
+      }
+  };
+
+  const handleTestEmail = async () => {
+      if (!emailConfig.enabled || !emailConfig.serviceId) {
+          showError("Please enable and save configuration first.");
+          return;
+      }
+      setIsTestingEmail(true);
+      try {
+          // We assume config is saved, but we can also pass current state if we refactored service.
+          // For now, rely on saved config as per service architecture.
+          await saveEmailConfig(emailConfig); // Save first to ensure service uses latest
+          
+          await sendSystemEmail(
+              "Test Notification", 
+              "This is a test email from your AssetTrack System. If you are reading this, the integration is working correctly.",
+              window.location.href
+          );
+          showSuccess(`Test email sent to ${emailConfig.targetEmail}`);
+      } catch (e) {
+          showError("Failed to send test email. Check console.");
+      } finally {
+          setIsTestingEmail(false);
       }
   };
 
@@ -337,6 +382,61 @@ const Settings: React.FC = () => {
                 <span className="ml-3 text-sm font-medium text-slate-700 dark:text-slate-300">{isSandbox ? 'Enabled' : 'Disabled'}</span>
             </label>
         </div>
+      </div>
+
+      {/* Notification Preferences (EmailJS) */}
+      <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                <Bell size={20} /> Notification Preferences
+            </h3>
+          </div>
+          <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-900/30 flex items-start gap-3 mb-6">
+              <Mail size={20} className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+              <div>
+                  <h4 className="text-sm font-bold text-blue-900 dark:text-blue-300">Email Alerts</h4>
+                  <p className="text-xs text-blue-700 dark:text-blue-400 mt-1">
+                      Configure <a href="https://www.emailjs.com" target="_blank" rel="noreferrer" className="underline font-bold">EmailJS</a> to send real-time alerts for critical events (Ticket Created, Handover Signed).
+                  </p>
+                  <p className="text-xs text-blue-600 dark:text-blue-500 mt-1">
+                      Template Variables: <span className="font-mono bg-blue-100 dark:bg-blue-900 px-1 rounded">{'{{title}}'}</span>, <span className="font-mono bg-blue-100 dark:bg-blue-900 px-1 rounded">{'{{message}}'}</span>, <span className="font-mono bg-blue-100 dark:bg-blue-900 px-1 rounded">{'{{link}}'}</span>, <span className="font-mono bg-blue-100 dark:bg-blue-900 px-1 rounded">{'{{date}}'}</span>
+                  </p>
+              </div>
+          </div>
+
+          <form onSubmit={handleSaveEmailConfig} className="space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                  <input type="checkbox" id="emailEnabled" checked={emailConfig.enabled} onChange={e => setEmailConfig({...emailConfig, enabled: e.target.checked})} className="rounded border-slate-300" />
+                  <label htmlFor="emailEnabled" className="text-sm font-medium text-slate-700 dark:text-slate-300">Enable Email Notifications</label>
+              </div>
+              
+              <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${!emailConfig.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+                  <div>
+                      <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Service ID</label>
+                      <input className={inputClass} value={emailConfig.serviceId} onChange={e => setEmailConfig({...emailConfig, serviceId: e.target.value})} placeholder="service_xxx" />
+                  </div>
+                  <div>
+                      <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Template ID</label>
+                      <input className={inputClass} value={emailConfig.templateId} onChange={e => setEmailConfig({...emailConfig, templateId: e.target.value})} placeholder="template_xxx" />
+                  </div>
+                  <div>
+                      <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Public Key</label>
+                      <input className={inputClass} value={emailConfig.publicKey} onChange={e => setEmailConfig({...emailConfig, publicKey: e.target.value})} placeholder="user_xxx" type="password" />
+                  </div>
+                  <div>
+                      <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Receiver Email (IT Manager)</label>
+                      <input className={inputClass} value={emailConfig.targetEmail} onChange={e => setEmailConfig({...emailConfig, targetEmail: e.target.value})} placeholder="it@eatx.com" type="email" />
+                  </div>
+              </div>
+              <div className="flex justify-end gap-3">
+                  <button type="button" onClick={handleTestEmail} disabled={isTestingEmail || !emailConfig.enabled} className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50">
+                      {isTestingEmail ? <Loader2 className="animate-spin" size={16}/> : <Send size={16}/>} Test
+                  </button>
+                  <button type="submit" disabled={isSavingEmail} className="bg-slate-900 dark:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-black dark:hover:bg-blue-700 disabled:opacity-50">
+                      {isSavingEmail ? <Loader2 className="animate-spin" size={16}/> : <Save size={16}/>} Save Configuration
+                  </button>
+              </div>
+          </form>
       </div>
 
       {/* User Management */}

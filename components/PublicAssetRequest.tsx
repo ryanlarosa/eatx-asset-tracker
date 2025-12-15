@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
-import { getAppConfig, createAssetRequest } from '../services/storageService';
-import { ShoppingBag, Send, Loader2, CheckCircle, Plus, Trash2, User, Users } from 'lucide-react';
+import { getAppConfig, createAssetRequest, getSandboxStatus } from '../services/storageService';
+import { ShoppingBag, Send, Loader2, CheckCircle, Plus, Trash2, User, Users, Database, Mail } from 'lucide-react';
 
 const PublicAssetRequest: React.FC = () => {
     const [departments, setDepartments] = useState<string[]>([]);
@@ -10,14 +11,17 @@ const PublicAssetRequest: React.FC = () => {
 
     // Form
     const [submitterName, setSubmitterName] = useState('');
+    const [submitterEmail, setSubmitterEmail] = useState('');
     const [employeeName, setEmployeeName] = useState('');
     const [department, setDepartment] = useState('');
     
-    // Multiple Items State (now using 'itemName' instead of 'category' for clarity in UI, though we map to category in DB)
+    // Multiple Items State
     const [requestItems, setRequestItems] = useState<{id: number, itemName: string}[]>([{ id: Date.now(), itemName: '' }]);
 
     const [urgency, setUrgency] = useState('Medium');
     const [reason, setReason] = useState('');
+
+    const isSandbox = getSandboxStatus();
 
     useEffect(() => {
         const init = async () => {
@@ -56,6 +60,7 @@ const PublicAssetRequest: React.FC = () => {
             await Promise.all(requestItems.map(item => 
                 createAssetRequest({
                     requesterName: submitterName,
+                    requesterEmail: submitterEmail,
                     department,
                     category: item.itemName, // Storing free text item name in category field
                     urgency: urgency as any,
@@ -89,8 +94,13 @@ const PublicAssetRequest: React.FC = () => {
     );
 
     return (
-        <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
-            <div className="max-w-lg w-full bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden my-8 w-full">
+        <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4 relative">
+            {isSandbox && (
+                <div className="fixed top-0 left-0 right-0 bg-amber-500 text-white text-xs font-bold text-center py-1 z-50 flex items-center justify-center gap-2 shadow-sm">
+                    <Database size={12} /> SANDBOX MODE - TEST DATA ONLY
+                </div>
+            )}
+            <div className={`max-w-lg w-full bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden my-8 w-full ${isSandbox ? 'mt-8' : ''}`}>
                 <div className="bg-slate-900 dark:bg-blue-600 p-6 text-white text-center">
                     <div className="flex justify-center mb-3"><ShoppingBag size={32} className="text-emerald-400" /></div>
                     <h1 className="text-xl font-bold">Request Asset</h1>
@@ -110,13 +120,21 @@ const PublicAssetRequest: React.FC = () => {
                         </div>
 
                         <div className="w-full">
-                             <label className={labelClass}>For Employee (User)</label>
+                             <label className={labelClass}>Email (For Updates)</label>
                              <div className="relative">
-                                <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
-                                <input required placeholder="New Joiner / Staff Name" className={`pl-9 ${inputClass}`} value={employeeName} onChange={e => setEmployeeName(e.target.value)} />
+                                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
+                                <input required type="email" placeholder="your.email@eatx.com" className={`pl-9 ${inputClass}`} value={submitterEmail} onChange={e => setSubmitterEmail(e.target.value)} />
                              </div>
                         </div>
                    </div>
+
+                   <div className="w-full">
+                        <label className={labelClass}>For Employee (User)</label>
+                        <div className="relative">
+                        <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
+                        <input required placeholder="New Joiner / Staff Name" className={`pl-9 ${inputClass}`} value={employeeName} onChange={e => setEmployeeName(e.target.value)} />
+                        </div>
+                    </div>
 
                     <div className="w-full">
                          <label className={labelClass}>Department</label>

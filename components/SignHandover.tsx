@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getPendingHandover, completePendingHandover } from '../services/storageService';
+import { getPendingHandover, completePendingHandover, getSandboxStatus } from '../services/storageService';
 import { PendingHandover } from '../types';
-import { MonitorSmartphone, CheckCircle, AlertTriangle, PenTool, Loader2 } from 'lucide-react';
+import { MonitorSmartphone, CheckCircle, AlertTriangle, PenTool, Loader2, Database } from 'lucide-react';
 
 const SignHandover: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -17,6 +18,8 @@ const SignHandover: React.FC = () => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [isDrawing, setIsDrawing] = useState(false);
     const [hasSignature, setHasSignature] = useState(false);
+
+    const isSandbox = getSandboxStatus();
 
     useEffect(() => {
         if (!id) return;
@@ -129,8 +132,13 @@ const SignHandover: React.FC = () => {
     );
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-12 px-4">
-            <div className="max-w-2xl mx-auto bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-12 px-4 relative">
+            {isSandbox && (
+                <div className="fixed top-0 left-0 right-0 bg-amber-500 text-white text-xs font-bold text-center py-1 z-50 flex items-center justify-center gap-2 shadow-sm">
+                    <Database size={12} /> SANDBOX MODE - TEST DATA ONLY
+                </div>
+            )}
+            <div className={`max-w-2xl mx-auto bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden ${isSandbox ? 'mt-4' : ''}`}>
                 <div className="bg-slate-900 dark:bg-blue-600 p-6 text-white text-center">
                     <div className="flex justify-center mb-3"><MonitorSmartphone size={32} /></div>
                     <h1 className="text-xl font-bold">EatX Asset Handover</h1>

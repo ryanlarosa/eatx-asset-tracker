@@ -11,6 +11,24 @@ export interface UserProfile {
   displayName?: string;
 }
 
+export interface EmailConfig {
+  serviceId: string;
+  templateId: string;
+  publicKey: string;
+  targetEmail: string; // The IT Manager email that receives alerts
+  enabled: boolean;
+}
+
+export interface AppNotification {
+  id: string;
+  type: 'info' | 'warning' | 'success' | 'error';
+  title: string;
+  message: string;
+  timestamp: string;
+  read: boolean;
+  link?: string;
+}
+
 export interface AssetLog {
   id: string;
   assetId: string;
@@ -28,8 +46,6 @@ export interface HandoverDocument {
   assets: { id: string; name: string; serialNumber: string }[];
   signatureBase64: string;
   itSignatureBase64?: string;
-  headSignatureBase64?: string;
-  headName?: string;
   date: string;
   type: 'Handover' | 'Return' | 'Transfer';
   status?: 'Pending' | 'Completed'; // Track multi-step signing progress
@@ -55,6 +71,7 @@ export interface IncidentReport {
   imageBase64?: string; // Evidence photo
   location: string;
   reportedBy: string; // Staff name
+  reporterEmail?: string; // Email for updates
   description: string;
   priority: 'Low' | 'Medium' | 'High' | 'Critical';
   status: 'New' | 'Open' | 'In Progress' | 'Waiting for Parts' | 'Resolved' | 'Rejected';
@@ -67,6 +84,7 @@ export interface AssetRequest {
   id: string;
   requestNumber: string;
   requesterName: string;
+  requesterEmail?: string; // Email for updates
   department: string;
   category: string; // What they want (e.g. Laptop)
   urgency: 'Low' | 'Medium' | 'High';

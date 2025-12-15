@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import { Asset } from '../types';
-import { getAppConfig, getAssets, createIncidentReport } from '../services/storageService';
-import { AlertTriangle, Send, Loader2, CheckCircle, MonitorSmartphone, MapPin, Search, Camera, Image as ImageIcon, X } from 'lucide-react';
+import { getAppConfig, getAssets, createIncidentReport, getSandboxStatus } from '../services/storageService';
+import { AlertTriangle, Send, Loader2, CheckCircle, MonitorSmartphone, MapPin, Search, Camera, Image as ImageIcon, X, Database, Mail } from 'lucide-react';
 
 const PublicReportIssue: React.FC = () => {
     const [locations, setLocations] = useState<string[]>([]);
@@ -20,7 +21,10 @@ const PublicReportIssue: React.FC = () => {
     const [imageBase64, setImageBase64] = useState('');
     const [description, setDescription] = useState('');
     const [reportedBy, setReportedBy] = useState('');
+    const [reporterEmail, setReporterEmail] = useState('');
     const [priority, setPriority] = useState('Medium');
+
+    const isSandbox = getSandboxStatus();
 
     useEffect(() => {
         const init = async () => {
@@ -101,6 +105,7 @@ const PublicReportIssue: React.FC = () => {
                 imageBase64,
                 description,
                 reportedBy,
+                reporterEmail,
                 priority: priority as any,
             });
             setSubmitted(true);
@@ -128,8 +133,13 @@ const PublicReportIssue: React.FC = () => {
     );
 
     return (
-        <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
-            <div className="max-w-lg w-full bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden my-8">
+        <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4 relative">
+            {isSandbox && (
+                <div className="fixed top-0 left-0 right-0 bg-amber-500 text-white text-xs font-bold text-center py-1 z-50 flex items-center justify-center gap-2 shadow-sm">
+                    <Database size={12} /> SANDBOX MODE - TEST DATA ONLY
+                </div>
+            )}
+            <div className={`max-w-lg w-full bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden my-8 ${isSandbox ? 'mt-8' : ''}`}>
                 <div className="bg-slate-900 dark:bg-blue-600 p-6 text-white text-center">
                     <div className="flex justify-center mb-3"><AlertTriangle size={32} className="text-amber-400" /></div>
                     <h1 className="text-xl font-bold">Report an Issue</h1>
@@ -137,9 +147,18 @@ const PublicReportIssue: React.FC = () => {
                 </div>
                 
                 <form onSubmit={handleSubmit} className="p-6 md:p-8 space-y-5">
-                    <div>
-                        <label className={labelClass}>Your Name / Role</label>
-                        <input required placeholder="e.g. John (Bar Manager)" className={inputClass} value={reportedBy} onChange={e => setReportedBy(e.target.value)} />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className={labelClass}>Your Name</label>
+                            <input required placeholder="e.g. John (Bar Manager)" className={inputClass} value={reportedBy} onChange={e => setReportedBy(e.target.value)} />
+                        </div>
+                        <div>
+                            <label className={labelClass}>Email (For Updates)</label>
+                            <div className="relative">
+                                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
+                                <input required type="email" placeholder="your.email@eatx.com" className={`pl-9 ${inputClass}`} value={reporterEmail} onChange={e => setReporterEmail(e.target.value)} />
+                            </div>
+                        </div>
                     </div>
 
                     <div>

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Asset, UserProfile, HandoverDocument } from '../types';
-import { listenToAssets, bulkAssignAssets, bulkReturnAssets, bulkTransferAssets, getCurrentUserProfile, saveHandoverDocument, getHandoverDocuments, createPendingHandover } from '../services/storageService';
+import { listenToAssets, bulkAssignAssets, bulkReturnAssets, bulkTransferAssets, getCurrentUserProfile, saveHandoverDocument, getHandoverDocuments, createPendingHandover, getSandboxStatus } from '../services/storageService';
 import { Briefcase, Archive, ArrowRight, CheckCircle, Search, Laptop, Smartphone, Monitor, User as UserIcon, AlertTriangle, X, FileText, Download, Link as LinkIcon, Mail, Printer, Clock } from 'lucide-react';
 import HandoverModal from './HandoverModal';
 
@@ -27,7 +27,7 @@ const StaffView: React.FC = () => {
     assets: Asset[]; // Or derived from assets
     assetsSnapshot?: { id: string; name: string; serialNumber: string }[]; // For resuming, we use snapshot
     docId?: string; // If resuming
-    initialData?: { employeeSig?: string, itSig?: string, headSig?: string, headName?: string };
+    initialData?: { employeeSig?: string, itSig?: string };
   }>({ isOpen: false, type: 'Handover', employeeName: '', assets: [] });
 
   const currentUser = getCurrentUserProfile();
@@ -108,7 +108,11 @@ const StaffView: React.FC = () => {
     try {
         const selectedAssetsList = assets.filter(a => selectedAssetIds.has(a.id));
         const pendingId = await createPendingHandover(targetEmployee, selectedAssetsList);
-        const link = `${window.location.origin}/#/sign/${pendingId}`;
+        
+        // Append env param if sandbox
+        const isSandbox = getSandboxStatus();
+        const link = `${window.location.origin}/#/sign/${pendingId}${isSandbox ? '?env=sandbox' : ''}`;
+        
         setLinkModal({ open: true, link, name: targetEmployee });
         setSelectedAssetIds(new Set());
         setTargetEmployee('');
@@ -150,14 +154,12 @@ const StaffView: React.FC = () => {
           docId: doc.id,
           initialData: {
               employeeSig: doc.signatureBase64,
-              itSig: doc.itSignatureBase64,
-              headSig: doc.headSignatureBase64,
-              headName: doc.headName
+              itSig: doc.itSignatureBase64
           }
       });
   };
 
-  const handleSignatureConfirm = async (sigs: { employeeSig: string, itSig?: string, headSig?: string, headName?: string, status: 'Pending' | 'Completed' }) => {
+  const handleSignatureConfirm = async (sigs: { employeeSig: string, itSig?: string, status: 'Pending' | 'Completed' }) => {
       setIsProcessing(true);
       try {
           // Use existing ID if resuming, or create new
@@ -170,8 +172,6 @@ const StaffView: React.FC = () => {
               assets: signModal.assetsSnapshot || signModal.assets.map(a => ({ id: a.id, name: a.name, serialNumber: a.serialNumber })),
               signatureBase64: sigs.employeeSig,
               itSignatureBase64: sigs.itSig,
-              headSignatureBase64: sigs.headSig,
-              headName: sigs.headName,
               date: new Date().toISOString(),
               type: signModal.type,
               status: sigs.status
@@ -181,12 +181,6 @@ const StaffView: React.FC = () => {
 
           const assetIds = signModal.assetsSnapshot ? signModal.assetsSnapshot.map(a => a.id) : signModal.assets.map(a => a.id);
 
-          // Logic: Perform actual asset update ONLY if we haven't done it yet OR if it is finalized.
-          // For Returns: If IT has signed (even if status is pending), we can probably return the assets to storage?
-          // Let's assume if status becomes 'Pending' (Saved at IT step) OR 'Completed', we execute the asset update.
-          // BUT ensure we don't do it multiple times. (bulkReturnAssets logs it).
-          // For simplicity: Always update assets state to reflect current reality.
-          
           if (signModal.type === 'Return') {
               // If IT signed, we consider them returned to storage
               if (sigs.itSig) {
@@ -236,7 +230,6 @@ const StaffView: React.FC = () => {
           // If incomplete, hide missing blocks or show blank
           const empSig = doc.signatureBase64 ? `<img src="${doc.signatureBase64}" class="signature-img" />` : '<div style="height:60px; color:#ccc;">Pending</div>';
           const itSig = doc.itSignatureBase64 ? `<img src="${doc.itSignatureBase64}" class="signature-img" />` : '<div style="height:60px; color:#ccc;">Pending</div>';
-          const headSig = doc.headSignatureBase64 ? `<img src="${doc.headSignatureBase64}" class="signature-img" />` : '<div style="height:60px; color:#ccc;">Pending</div>';
 
           footerContent = `
             <table class="signatures-table">
@@ -249,11 +242,6 @@ const StaffView: React.FC = () => {
                     <td class="sig-cell">
                         ${itSig}
                         <div><strong>IT Verified</strong></div>
-                        <div class="timestamp">Date: ${dateStr}</div>
-                    </td>
-                    <td class="sig-cell">
-                        ${headSig}
-                        <div><strong>Head:</strong> ${doc.headName || 'Dept Head'}</div>
                         <div class="timestamp">Date: ${dateStr}</div>
                     </td>
                 </tr>
@@ -293,7 +281,7 @@ const StaffView: React.FC = () => {
 
                 /* Multi-sig table */
                 .signatures-table { width: 100%; border: none; margin-top: 20px; }
-                .signatures-table td { border: none; padding: 10px; vertical-align: top; width: 33%; }
+                .signatures-table td { border: none; padding: 10px; vertical-align: top; width: 50%; }
                 .sig-cell { border-top: 1px solid #ccc !important; }
 
                 @media print {
@@ -612,9 +600,6 @@ const StaffView: React.FC = () => {
                                             <div className="bg-white p-1 rounded border border-slate-100 dark:border-slate-800 w-fit" title="IT Verified">
                                                 {doc.itSignatureBase64 ? <img src={doc.itSignatureBase64} alt="IT" className="h-6 opacity-90" /> : <div className="h-6 w-12 flex items-center justify-center text-[10px] text-slate-300 italic">IT</div>}
                                             </div>
-                                            <div className="bg-white p-1 rounded border border-slate-100 dark:border-slate-800 w-fit" title={`Head: ${doc.headName}`}>
-                                                {doc.headSignatureBase64 ? <img src={doc.headSignatureBase64} alt="Head" className="h-6 opacity-90" /> : <div className="h-6 w-12 flex items-center justify-center text-[10px] text-slate-300 italic">Head</div>}
-                                            </div>
                                             </>
                                         )}
                                     </div>
@@ -627,7 +612,7 @@ const StaffView: React.FC = () => {
                                             onClick={() => handleResumeSign(doc)} 
                                             className="px-3 py-2 bg-amber-500 text-white rounded-lg text-xs font-bold hover:bg-amber-600 shadow-sm flex items-center gap-1"
                                         >
-                                            {doc.itSignatureBase64 ? 'Sign (Head)' : 'Sign (IT)'}
+                                            Sign (IT)
                                         </button>
                                     )}
                                 </div>
