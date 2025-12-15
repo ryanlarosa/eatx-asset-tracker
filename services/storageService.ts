@@ -88,6 +88,17 @@ const snapToData = <T>(snapshot: QuerySnapshot<DocumentData>): T[] => {
   return snapshot.docs.map((d) => d.data() as T);
 };
 
+// Firestore does not accept 'undefined', so we must strip it.
+const sanitizeData = (data: any) => {
+  const clean: any = {};
+  Object.keys(data).forEach((key) => {
+    if (data[key] !== undefined) {
+      clean[key] = data[key];
+    }
+  });
+  return clean;
+};
+
 let currentUserProfile: UserProfile | null = null;
 
 const isSandbox = () => {
@@ -364,7 +375,13 @@ export const saveAsset = async (asset: Asset) => {
   const isNew = !docSnap.exists();
   const oldData = isNew ? null : (docSnap.data() as Asset);
 
-  await setDoc(docRef, { ...asset, lastUpdated: new Date().toISOString() });
+  // Sanitize data before saving to remove any undefined fields
+  const dataToSave = sanitizeData({
+    ...asset,
+    lastUpdated: new Date().toISOString(),
+  });
+
+  await setDoc(docRef, dataToSave);
 
   if (isNew) {
     await logAction(asset.id, "Created", `Asset Onboarded: ${asset.name}`);
@@ -414,9 +431,10 @@ export const deleteAsset = async (id: string) => {
 
 export const importAssetsBulk = async (newAssets: Asset[]) => {
   const batch = writeBatch(db);
-  newAssets.forEach((asset) =>
-    batch.set(doc(db, getColName("assets"), asset.id), asset)
-  );
+  newAssets.forEach((asset) => {
+    const dataToSave = sanitizeData(asset);
+    batch.set(doc(db, getColName("assets"), asset.id), dataToSave);
+  });
   await batch.commit();
   await logAction(
     "BULK",
@@ -497,8 +515,11 @@ export const listenToProjects = (cb: (projects: Project[]) => void) => {
   );
 };
 
-export const saveProject = async (project: Project) =>
-  setDoc(doc(db, getColName("projects"), project.id), project);
+export const saveProject = async (project: Project) => {
+  const dataToSave = sanitizeData(project);
+  return setDoc(doc(db, getColName("projects"), project.id), dataToSave);
+};
+
 export const deleteProject = async (id: string) =>
   deleteDoc(doc(db, getColName("projects"), id));
 
@@ -543,7 +564,7 @@ export const createIncidentReport = async (
     createdAt: new Date().toISOString(),
   };
 
-  await setDoc(doc(db, getColName("incidents"), id), report);
+  await setDoc(doc(db, getColName("incidents"), id), sanitizeData(report));
 
   if (data.assetId) {
     await updateDoc(doc(db, getColName("assets"), data.assetId), {
@@ -583,7 +604,7 @@ export const updateIncidentReport = async (
   if (!snap.exists()) return;
   const incident = snap.data() as IncidentReport;
 
-  await updateDoc(ref, updates);
+  await updateDoc(ref, sanitizeData(updates));
 
   if (incident.assetId) {
     if (
@@ -704,7 +725,7 @@ export const createAssetRequest = async (
     status: "New",
     createdAt: new Date().toISOString(),
   };
-  await setDoc(doc(db, getColName("requests"), id), req);
+  await setDoc(doc(db, getColName("requests"), id), sanitizeData(req));
 
   const msg = `${data.requesterName} requested ${data.category}. Urgency: ${data.urgency}`;
   await createNotification("info", "New Asset Request", msg, "/requests");
@@ -727,7 +748,7 @@ export const updateAssetRequest = async (
   updates: Partial<AssetRequest>
 ) => {
   const ref = doc(db, getColName("requests"), id);
-  await updateDoc(ref, updates);
+  await updateDoc(ref, sanitizeData(updates));
 
   const req = (await getDoc(ref)).data() as AssetRequest;
   if (updates.status && req.requesterEmail && updates.status !== req.status) {
@@ -846,7 +867,7 @@ export const listenToInvoices = (cb: (inv: Invoice[]) => void) => {
   );
 };
 export const saveInvoice = async (invoice: Invoice) =>
-  setDoc(doc(db, getColName("invoices"), invoice.id), invoice);
+  setDoc(doc(db, getColName("invoices"), invoice.id), sanitizeData(invoice));
 export const deleteInvoice = async (id: string) =>
   deleteDoc(doc(db, getColName("invoices"), id));
 
@@ -855,26 +876,29 @@ export const getHandoverDocuments = async (): Promise<HandoverDocument[]> =>
     await getDocs(collection(db, getColName("documents")))
   );
 export const saveHandoverDocument = async (docData: HandoverDocument) =>
-  setDoc(doc(db, getColName("documents"), docData.id), docData);
+  setDoc(doc(db, getColName("documents"), docData.id), sanitizeData(docData));
 
 export const createPendingHandover = async (
   employeeName: string,
   assets: Asset[]
 ): Promise<string> => {
   const id = "ph-" + Date.now();
-  await setDoc(doc(db, getColName("pendingHandovers"), id), {
-    id,
-    employeeName,
-    assetIds: assets.map((a) => a.id),
-    assetsSnapshot: assets.map((a) => ({
-      id: a.id,
-      name: a.name,
-      serialNumber: a.serialNumber,
-    })),
-    createdAt: new Date().toISOString(),
-    createdBy: currentUserProfile?.email || "System",
-    status: "Pending",
-  } as PendingHandover);
+  await setDoc(
+    doc(db, getColName("pendingHandovers"), id),
+    sanitizeData({
+      id,
+      employeeName,
+      assetIds: assets.map((a) => a.id),
+      assetsSnapshot: assets.map((a) => ({
+        id: a.id,
+        name: a.name,
+        serialNumber: a.serialNumber,
+      })),
+      createdAt: new Date().toISOString(),
+      createdBy: currentUserProfile?.email || "System",
+      status: "Pending",
+    } as PendingHandover)
+  );
   return id;
 };
 
