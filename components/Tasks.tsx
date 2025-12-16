@@ -19,6 +19,7 @@ import {
   Loader2,
   ClipboardList,
   Save,
+  CheckSquare,
 } from "lucide-react";
 
 const Tasks: React.FC = () => {
@@ -35,6 +36,12 @@ const Tasks: React.FC = () => {
   >("Medium");
   const [newTaskDueDate, setNewTaskDueDate] = useState("");
   const [newTaskAssignee, setNewTaskAssignee] = useState("");
+  const [newChecklist, setNewChecklist] = useState<
+    { id: string; text: string; done: boolean }[]
+  >([]);
+
+  // Temp checklist input
+  const [checkItemText, setCheckItemText] = useState("");
 
   const user = getCurrentUserProfile();
   const canEdit = user?.role === "admin" || user?.role === "technician";
@@ -61,6 +68,7 @@ const Tasks: React.FC = () => {
       assignedTo: newTaskAssignee,
       createdAt: new Date().toISOString(),
       createdBy: user?.email || "System",
+      checklist: newChecklist,
     };
 
     await saveTask(task);
@@ -70,6 +78,7 @@ const Tasks: React.FC = () => {
     setNewTaskPriority("Medium");
     setNewTaskDueDate("");
     setNewTaskAssignee("");
+    setNewChecklist([]);
   };
 
   const handleUpdateTask = async (e: React.FormEvent) => {
@@ -86,6 +95,50 @@ const Tasks: React.FC = () => {
   const handleDelete = async (id: string) => {
     if (confirm("Delete this task?")) {
       await deleteTask(id);
+    }
+  };
+
+  // --- Checklist Helpers ---
+  const addCheckItem = (isEditMode: boolean) => {
+    if (!checkItemText.trim()) return;
+    const item = {
+      id: Date.now().toString(),
+      text: checkItemText,
+      done: false,
+    };
+
+    if (isEditMode && editingTask) {
+      setEditingTask({
+        ...editingTask,
+        checklist: [...(editingTask.checklist || []), item],
+      });
+    } else {
+      setNewChecklist([...newChecklist, item]);
+    }
+    setCheckItemText("");
+  };
+
+  const toggleCheckItem = (itemId: string, isEditMode: boolean) => {
+    if (isEditMode && editingTask) {
+      const updated = (editingTask.checklist || []).map((i) =>
+        i.id === itemId ? { ...i, done: !i.done } : i
+      );
+      setEditingTask({ ...editingTask, checklist: updated });
+    } else {
+      setNewChecklist(
+        newChecklist.map((i) => (i.id === itemId ? { ...i, done: !i.done } : i))
+      );
+    }
+  };
+
+  const removeCheckItem = (itemId: string, isEditMode: boolean) => {
+    if (isEditMode && editingTask) {
+      const updated = (editingTask.checklist || []).filter(
+        (i) => i.id !== itemId
+      );
+      setEditingTask({ ...editingTask, checklist: updated });
+    } else {
+      setNewChecklist(newChecklist.filter((i) => i.id !== itemId));
     }
   };
 
@@ -128,102 +181,131 @@ const Tasks: React.FC = () => {
             No tasks
           </div>
         )}
-        {items.map((t) => (
-          <div
-            key={t.id}
-            className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow group"
-          >
-            <div className="flex justify-between items-start mb-2">
-              <span
-                className={`text-[10px] px-1.5 py-0.5 rounded border uppercase font-bold ${getPriorityColor(
-                  t.priority
-                )}`}
-              >
-                {t.priority}
-              </span>
+        {items.map((t) => {
+          const checklist = t.checklist || [];
+          const doneCount = checklist.filter((c) => c.done).length;
+          const totalCount = checklist.length;
+          const progress =
+            totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
+
+          return (
+            <div
+              key={t.id}
+              className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow group"
+            >
+              <div className="flex justify-between items-start mb-2">
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded border uppercase font-bold ${getPriorityColor(
+                    t.priority
+                  )}`}
+                >
+                  {t.priority}
+                </span>
+                {canEdit && (
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => setEditingTask(t)}
+                      className="text-slate-300 hover:text-blue-600 dark:hover:text-blue-400"
+                    >
+                      <Edit2 size={14} />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(t.id)}
+                      className="text-slate-300 hover:text-red-500"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+              <h4 className="font-bold text-slate-800 dark:text-slate-200 text-sm mb-1">
+                {t.title}
+              </h4>
+              {t.description && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-2 line-clamp-2">
+                  {t.description}
+                </p>
+              )}
+
+              {/* Checklist Progress */}
+              {totalCount > 0 && (
+                <div className="mb-3">
+                  <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 mb-1">
+                    <span className="flex items-center gap-1">
+                      <CheckSquare size={10} /> Checklist
+                    </span>
+                    <span>
+                      {progress}% ({doneCount}/{totalCount})
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                      style={{ width: `${progress}%` }}
+                    ></div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 text-[10px] text-slate-400 mb-3">
+                {t.dueDate && (
+                  <span
+                    className={`flex items-center gap-1 ${
+                      new Date(t.dueDate) < new Date() &&
+                      t.status !== "Completed"
+                        ? "text-red-500 font-bold"
+                        : ""
+                    }`}
+                  >
+                    <Calendar size={12} /> {t.dueDate}
+                  </span>
+                )}
+                {t.assignedTo && (
+                  <span className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300">
+                    {t.assignedTo}
+                  </span>
+                )}
+              </div>
+
               {canEdit && (
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={() => setEditingTask(t)}
-                    className="text-slate-300 hover:text-blue-600 dark:hover:text-blue-400"
-                  >
-                    <Edit2 size={14} />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(t.id)}
-                    className="text-slate-300 hover:text-red-500"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                <div className="flex gap-2 pt-2 border-t border-slate-50 dark:border-slate-800">
+                  {status === "Pending" && (
+                    <button
+                      onClick={() => updateStatus(t, "In Progress")}
+                      className="flex-1 py-1.5 bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 rounded text-xs font-bold hover:bg-blue-100 dark:hover:bg-blue-900/50"
+                    >
+                      Start
+                    </button>
+                  )}
+                  {status === "In Progress" && (
+                    <>
+                      <button
+                        onClick={() => updateStatus(t, "Pending")}
+                        className="flex-1 py-1.5 bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-400 rounded text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-700"
+                      >
+                        Back
+                      </button>
+                      <button
+                        onClick={() => updateStatus(t, "Completed")}
+                        className="flex-1 py-1.5 bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400 rounded text-xs font-bold hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
+                      >
+                        Done
+                      </button>
+                    </>
+                  )}
+                  {status === "Completed" && (
+                    <button
+                      onClick={() => updateStatus(t, "In Progress")}
+                      className="flex-1 py-1.5 bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-400 rounded text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-700"
+                    >
+                      Reopen
+                    </button>
+                  )}
                 </div>
               )}
             </div>
-            <h4 className="font-bold text-slate-800 dark:text-slate-200 text-sm mb-1">
-              {t.title}
-            </h4>
-            {t.description && (
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-2 line-clamp-2">
-                {t.description}
-              </p>
-            )}
-
-            <div className="flex items-center gap-2 text-[10px] text-slate-400 mb-3">
-              {t.dueDate && (
-                <span
-                  className={`flex items-center gap-1 ${
-                    new Date(t.dueDate) < new Date() && t.status !== "Completed"
-                      ? "text-red-500 font-bold"
-                      : ""
-                  }`}
-                >
-                  <Calendar size={12} /> {t.dueDate}
-                </span>
-              )}
-              {t.assignedTo && (
-                <span className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300">
-                  {t.assignedTo}
-                </span>
-              )}
-            </div>
-
-            {canEdit && (
-              <div className="flex gap-2 pt-2 border-t border-slate-50 dark:border-slate-800">
-                {status === "Pending" && (
-                  <button
-                    onClick={() => updateStatus(t, "In Progress")}
-                    className="flex-1 py-1.5 bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 rounded text-xs font-bold hover:bg-blue-100 dark:hover:bg-blue-900/50"
-                  >
-                    Start
-                  </button>
-                )}
-                {status === "In Progress" && (
-                  <>
-                    <button
-                      onClick={() => updateStatus(t, "Pending")}
-                      className="flex-1 py-1.5 bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-400 rounded text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-700"
-                    >
-                      Back
-                    </button>
-                    <button
-                      onClick={() => updateStatus(t, "Completed")}
-                      className="flex-1 py-1.5 bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400 rounded text-xs font-bold hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
-                    >
-                      Done
-                    </button>
-                  </>
-                )}
-                {status === "Completed" && (
-                  <button
-                    onClick={() => updateStatus(t, "In Progress")}
-                    className="flex-1 py-1.5 bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-400 rounded text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-700"
-                  >
-                    Reopen
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -232,6 +314,72 @@ const Tasks: React.FC = () => {
     "w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-950 text-slate-900 dark:text-white";
   const labelClass =
     "block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1";
+
+  const ChecklistEditor = ({
+    items,
+    isEditing,
+  }: {
+    items: { id: string; text: string; done: boolean }[];
+    isEditing: boolean;
+  }) => (
+    <div className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-lg border border-slate-100 dark:border-slate-700 mt-2">
+      <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase block mb-2">
+        Checklist
+      </label>
+      <div className="space-y-2 mb-3">
+        {items.map((item) => (
+          <div key={item.id} className="flex items-center gap-2 group">
+            <input
+              type="checkbox"
+              checked={item.done}
+              onChange={() => toggleCheckItem(item.id, isEditing)}
+              className="rounded border-slate-300 dark:border-slate-600"
+            />
+            <span
+              className={`flex-1 text-sm ${
+                item.done
+                  ? "line-through text-slate-400"
+                  : "text-slate-700 dark:text-slate-200"
+              }`}
+            >
+              {item.text}
+            </span>
+            <button
+              type="button"
+              onClick={() => removeCheckItem(item.id, isEditing)}
+              className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        ))}
+        {items.length === 0 && (
+          <p className="text-xs text-slate-400 italic">No checklist items.</p>
+        )}
+      </div>
+      <div className="flex gap-2">
+        <input
+          className="flex-1 p-1.5 text-sm border border-slate-300 dark:border-slate-700 rounded bg-white dark:bg-slate-900 dark:text-white"
+          placeholder="Add item..."
+          value={checkItemText}
+          onChange={(e) => setCheckItemText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addCheckItem(isEditing);
+            }
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => addCheckItem(isEditing)}
+          className="px-3 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-white rounded text-xs font-bold"
+        >
+          Add
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-6 h-[calc(100vh-140px)] flex flex-col">
@@ -285,7 +433,7 @@ const Tasks: React.FC = () => {
       {/* CREATE MODAL */}
       {isCreating && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl max-w-md w-full p-6 border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in">
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl max-w-md w-full p-6 border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">
                 New Task
@@ -318,6 +466,9 @@ const Tasks: React.FC = () => {
                   placeholder="Details..."
                 />
               </div>
+
+              <ChecklistEditor items={newChecklist} isEditing={false} />
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Priority</label>
@@ -364,7 +515,7 @@ const Tasks: React.FC = () => {
       {/* EDIT MODAL */}
       {editingTask && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl max-w-md w-full p-6 border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in">
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl max-w-md w-full p-6 border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">
                 Edit Task
@@ -402,6 +553,12 @@ const Tasks: React.FC = () => {
                   }
                 />
               </div>
+
+              <ChecklistEditor
+                items={editingTask.checklist || []}
+                isEditing={true}
+              />
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Priority</label>
