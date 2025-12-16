@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Asset, AssetRequest } from '../types';
 import { listenToRequests, listenToAssets, updateAssetRequest, fulfillAssetRequest, getSandboxStatus } from '../services/storageService';
-import { ShoppingBag, Clock, CheckCircle, XCircle, ChevronRight, User, AlertCircle, Link as LinkIcon, Box, Loader2, ArrowRight, DollarSign, Send, Save } from 'lucide-react';
+import { ShoppingBag, Clock, CheckCircle, XCircle, ChevronRight, User, AlertCircle, Link as LinkIcon, Box, Loader2, ArrowRight, DollarSign, Send, Save, Search } from 'lucide-react';
 
 const AssetRequests: React.FC = () => {
     const [requests, setRequests] = useState<AssetRequest[]>([]);
@@ -13,6 +13,8 @@ const AssetRequests: React.FC = () => {
     
     // Processing State
     const [selectedAssetId, setSelectedAssetId] = useState('');
+    const [deployToUser, setDeployToUser] = useState('');
+    const [showUserDropdown, setShowUserDropdown] = useState(false);
     const [notes, setNotes] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
 
@@ -31,12 +33,22 @@ const AssetRequests: React.FC = () => {
         }
     }, []);
 
-    // Sync notes from DB when a request is selected
+    // Sync notes and try to extract beneficiary from Reason when a request is selected
     useEffect(() => {
         if (selectedRequest) {
             setNotes(selectedRequest.resolutionNotes || '');
+            
+            // Try to parse "For Employee: Name" from the reason field
+            const reason = selectedRequest.reason || '';
+            const match = reason.match(/For Employee:\s*([^\n]+)/i);
+            if (match && match[1]) {
+                setDeployToUser(match[1].trim());
+            } else {
+                setDeployToUser(''); // Default to empty if not found, forcing manual entry/selection
+            }
         } else {
             setNotes('');
+            setDeployToUser('');
         }
     }, [selectedRequest?.id]);
 
@@ -48,9 +60,6 @@ const AssetRequests: React.FC = () => {
                 status,
                 resolutionNotes: notes ? `${notePrefix} ${notes}` : notePrefix
             });
-            // We don't clear notes here immediately if we want to show the result, 
-            // but usually moving stage clears selection or updates UI.
-            // For this flow, let's clear inputs.
             setNotes('');
             setSelectedAssetId('');
         } catch (e) {
@@ -75,12 +84,13 @@ const AssetRequests: React.FC = () => {
     };
 
     const handleDeploy = async () => {
-        if (!selectedRequest || !selectedAssetId) return;
+        if (!selectedRequest || !selectedAssetId || !deployToUser) return;
         setIsProcessing(true);
         try {
-            await fulfillAssetRequest(selectedRequest.id, selectedAssetId, notes);
+            await fulfillAssetRequest(selectedRequest.id, selectedAssetId, notes, deployToUser);
             setNotes('');
             setSelectedAssetId('');
+            setDeployToUser('');
         } catch (e) {
             alert("Deployment failed.");
         } finally {
@@ -96,6 +106,10 @@ const AssetRequests: React.FC = () => {
 
     // Smart search for available assets based on request category
     const inventoryAssets = assets.filter(a => a.status === 'In Storage');
+
+    // Unique employees for autocomplete
+    const uniqueEmployees = Array.from(new Set(assets.map(a => a.assignedEmployee).filter(Boolean) as string[])).sort();
+    const filteredEmployees = uniqueEmployees.filter(e => e.toLowerCase().includes(deployToUser.toLowerCase()));
 
     const getUrgencyColor = (u: string) => {
         switch(u) {
@@ -279,9 +293,32 @@ const AssetRequests: React.FC = () => {
                                                                 <option value="">Select Asset to Deploy...</option>
                                                                 {inventoryAssets.map(a => <option key={a.id} value={a.id}>{a.name} ({a.serialNumber})</option>)}
                                                             </select>
+                                                            
+                                                            {/* User Selection */}
+                                                            <div className="relative mb-2">
+                                                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">Assign To Employee</label>
+                                                                <input 
+                                                                    className="w-full p-2 border border-slate-300 dark:border-slate-700 rounded text-sm bg-white dark:bg-slate-950 dark:text-white"
+                                                                    placeholder="Type employee name..."
+                                                                    value={deployToUser}
+                                                                    onChange={e => { setDeployToUser(e.target.value); setShowUserDropdown(true); }}
+                                                                    onFocus={() => setShowUserDropdown(true)}
+                                                                    onBlur={() => setTimeout(() => setShowUserDropdown(false), 200)}
+                                                                />
+                                                                {showUserDropdown && deployToUser && (
+                                                                    <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-10 max-h-40 overflow-y-auto">
+                                                                        {filteredEmployees.map(emp => (
+                                                                            <div key={emp} className="p-2 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer text-sm" onClick={() => setDeployToUser(emp)}>
+                                                                                {emp}
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
                                                             <button 
                                                                 onClick={handleDeploy}
-                                                                disabled={!selectedAssetId || isProcessing}
+                                                                disabled={!selectedAssetId || !deployToUser || isProcessing}
                                                                 className="w-full bg-emerald-600 text-white py-2 rounded font-medium text-sm hover:bg-emerald-700 disabled:opacity-50"
                                                             >
                                                                 Deploy Selected
@@ -348,6 +385,28 @@ const AssetRequests: React.FC = () => {
                                                         <option value="">Select Asset to Deploy...</option>
                                                         {inventoryAssets.map(a => <option key={a.id} value={a.id}>{a.name} ({a.serialNumber})</option>)}
                                                     </select>
+
+                                                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Assign To Employee</label>
+                                                    <div className="relative mb-2">
+                                                        <input 
+                                                            className="w-full p-2 border border-slate-300 dark:border-slate-700 rounded text-sm bg-white dark:bg-slate-950 dark:text-white"
+                                                            placeholder="Type employee name..."
+                                                            value={deployToUser}
+                                                            onChange={e => { setDeployToUser(e.target.value); setShowUserDropdown(true); }}
+                                                            onFocus={() => setShowUserDropdown(true)}
+                                                            onBlur={() => setTimeout(() => setShowUserDropdown(false), 200)}
+                                                        />
+                                                        {showUserDropdown && deployToUser && (
+                                                            <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-10 max-h-40 overflow-y-auto">
+                                                                {filteredEmployees.map(emp => (
+                                                                    <div key={emp} className="p-2 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer text-sm" onClick={() => setDeployToUser(emp)}>
+                                                                        {emp}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+
                                                     <div className="relative">
                                                         <textarea 
                                                             className="w-full p-2 border border-slate-300 dark:border-slate-700 rounded text-sm mb-2 bg-white dark:bg-slate-950 dark:text-white pr-10" 
@@ -365,7 +424,7 @@ const AssetRequests: React.FC = () => {
                                                     </div>
                                                     <button 
                                                         onClick={handleDeploy}
-                                                        disabled={!selectedAssetId || isProcessing}
+                                                        disabled={!selectedAssetId || !deployToUser || isProcessing}
                                                         className="w-full bg-emerald-600 text-white py-2 rounded-lg font-bold hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-2"
                                                     >
                                                         <Send size={16} /> Deploy Asset

@@ -124,6 +124,18 @@ export interface Asset {
   lastUpdated: string;
 }
 
+export interface Task {
+  id: string;
+  title: string;
+  description?: string;
+  status: 'Pending' | 'In Progress' | 'Completed';
+  priority: 'Low' | 'Medium' | 'High';
+  assignedTo?: string; // Name of IT staff
+  dueDate?: string;
+  createdAt: string;
+  createdBy: string;
+}
+
 export interface AppConfig {
   categories: string[];
   locations: string[];

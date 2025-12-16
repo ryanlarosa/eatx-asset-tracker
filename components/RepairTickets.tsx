@@ -27,6 +27,7 @@ const RepairTickets: React.FC = () => {
         description: '',
         priority: 'Medium' as IncidentReport['priority']
     });
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Resolve State
     const [resolutionType, setResolutionType] = useState<'repair' | 'replace'>('repair');
@@ -122,21 +123,28 @@ const RepairTickets: React.FC = () => {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        
-        await createIncidentReport({
-            location: newTicket.location,
-            assetId: newTicket.assetId || undefined,
-            assetName: newTicket.assetName,
-            deviceType: newTicket.deviceType,
-            reportedSerial: newTicket.reportedSerial,
-            imageBase64: newTicket.imageBase64,
-            description: newTicket.description,
-            priority: newTicket.priority,
-            reportedBy: currentUser?.email || 'Unknown'
-        });
+        if (isSubmitting) return;
+        setIsSubmitting(true);
+        try {
+            await createIncidentReport({
+                location: newTicket.location,
+                assetId: newTicket.assetId || undefined,
+                assetName: newTicket.assetName,
+                deviceType: newTicket.deviceType,
+                reportedSerial: newTicket.reportedSerial,
+                imageBase64: newTicket.imageBase64,
+                description: newTicket.description,
+                priority: newTicket.priority,
+                reportedBy: currentUser?.email || 'Unknown'
+            });
 
-        setIsCreating(false);
-        setNewTicket({ location: '', assetId: '', assetName: '', deviceType: '', reportedSerial: '', imageBase64: '', description: '', priority: 'Medium' });
+            setIsCreating(false);
+            setNewTicket({ location: '', assetId: '', assetName: '', deviceType: '', reportedSerial: '', imageBase64: '', description: '', priority: 'Medium' });
+        } catch (error) {
+            console.error("Failed to create ticket", error);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const handleResolve = async () => {
@@ -356,7 +364,9 @@ const RepairTickets: React.FC = () => {
 
                             <div className="pt-4 flex gap-3">
                                 <button type="button" onClick={() => setIsCreating(false)} className="flex-1 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg font-medium hover:bg-slate-50 dark:hover:bg-slate-800">Cancel</button>
-                                <button type="submit" className="flex-1 py-2.5 bg-slate-900 dark:bg-blue-600 text-white rounded-lg font-bold hover:bg-black dark:hover:bg-blue-700">Submit Report</button>
+                                <button type="submit" disabled={isSubmitting} className="flex-1 py-2.5 bg-slate-900 dark:bg-blue-600 text-white rounded-lg font-bold hover:bg-black dark:hover:bg-blue-700 disabled:opacity-50 flex justify-center items-center gap-2">
+                                    {isSubmitting ? <Loader2 className="animate-spin" size={18}/> : 'Submit Report'}
+                                </button>
                             </div>
                         </form>
                     </div>

@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { MonitorSmartphone, Database, Shield, LayoutDashboard, List, ShoppingBag, Wrench, Receipt, CalendarCheck, Users, Settings as SettingsIcon, X } from 'lucide-react';
+import { MonitorSmartphone, Database, Shield, LayoutDashboard, List, ShoppingBag, Wrench, Receipt, CalendarCheck, Users, Settings as SettingsIcon, X, ClipboardList } from 'lucide-react';
 import { getSandboxStatus, getCurrentUserProfile } from '../services/storageService';
 
 interface SidebarProps {
@@ -69,6 +69,7 @@ const Sidebar: React.FC<SidebarProps> = ({ notificationCount, isOpen, onClose })
           
           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-2 mt-6">Management</div>
           
+          <Link to="/tasks" className={linkClass('/tasks')} onClick={onClose}><ClipboardList size={18} /> Task Board</Link>
           <Link to="/planner" className={linkClass('/planner')} onClick={onClose}>
              <div className="flex items-center justify-between w-full">
               <div className="flex items-center gap-3"><CalendarCheck size={18} /> Planner</div>
@@ -81,7 +82,7 @@ const Sidebar: React.FC<SidebarProps> = ({ notificationCount, isOpen, onClose })
         </nav>
         
         <div className="p-4 border-t border-slate-100 dark:border-slate-800 text-center">
-            <p className="text-[10px] text-slate-400">v1.3.1 • EatX Internal Tool</p>
+            <p className="text-[10px] text-slate-400">v1.4.0 • EatX Internal Tool</p>
         </div>
       </div>
     </>

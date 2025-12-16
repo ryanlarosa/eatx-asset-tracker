@@ -15,6 +15,7 @@ import PublicReportIssue from './components/PublicReportIssue';
 import PublicAssetRequest from './components/PublicAssetRequest';
 import PublicStatusTracker from './components/PublicStatusTracker';
 import Invoices from './components/Invoices';
+import Tasks from './components/Tasks';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import LoginScreen from './components/LoginScreen';
@@ -137,6 +138,7 @@ const App = () => {
                                 <Route path="/repairs" element={<RepairTickets />} />
                                 <Route path="/invoices" element={<Invoices />} />
                                 <Route path="/planner" element={<Planner />} />
+                                <Route path="/tasks" element={<Tasks />} />
                                 <Route path="/staff" element={<ProtectedRoute requiredRole="technician"><StaffView /></ProtectedRoute>} />
                                 <Route path="/settings" element={<Settings />} />
                                 <Route path="*" element={<Navigate to="/" replace />} />
