@@ -103,8 +103,7 @@ const StaffView: React.FC = () => {
         if (mode === "offboard") {
           if (asset.assignedEmployee === selectedEmployee) newSet.add(id);
         } else {
-          if (!asset.assignedEmployee || asset.status === "In Storage")
-            newSet.add(id);
+          if (asset.status === "In Storage") newSet.add(id);
         }
       });
       return newSet;
@@ -137,13 +136,13 @@ const StaffView: React.FC = () => {
       if (!selectedEmployee) return false;
       return asset.assignedEmployee === selectedEmployee;
     } else {
-      const isUnassigned =
-        !asset.assignedEmployee || asset.status === "In Storage";
+      // Assignment only allows assets currently in Storage
+      const isInStorage = asset.status === "In Storage";
       const matchesSearch =
         !searchTerm ||
         asset.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         asset.category.toLowerCase().includes(searchTerm.toLowerCase());
-      return isUnassigned && matchesSearch;
+      return isInStorage && matchesSearch;
     }
   });
 
@@ -505,7 +504,7 @@ const StaffView: React.FC = () => {
             Staff & Audit
           </h1>
           <p className="text-slate-500 dark:text-slate-400 text-sm">
-            Onboard new hires or offboard leaving staff.
+            Assign assets or offboard staff equipment.
           </p>
         </div>
         <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg self-start">
@@ -564,7 +563,7 @@ const StaffView: React.FC = () => {
                   : "text-slate-500 dark:text-slate-400"
               }`}
             >
-              <Briefcase size={16} /> Onboard (Assign)
+              <Briefcase size={16} /> Assign Asset
             </button>
             <button
               onClick={() => {
@@ -579,7 +578,7 @@ const StaffView: React.FC = () => {
                   : "text-slate-500 dark:text-slate-400"
               }`}
             >
-              <Archive size={16} /> Offboard (Return)
+              <Archive size={16} /> Offboard Asset
             </button>
           </div>
 
@@ -622,7 +621,7 @@ const StaffView: React.FC = () => {
                     type="text"
                     placeholder={
                       mode === "onboard"
-                        ? "Filter assets (e.g. Laptop)..."
+                        ? "Filter available assets..."
                         : "Search Employee Name..."
                     }
                     value={searchTerm}
@@ -746,7 +745,7 @@ const StaffView: React.FC = () => {
               <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
                 <div className="font-semibold text-slate-700 dark:text-slate-200">
                   {mode === "onboard"
-                    ? "Available Assets (Unassigned)"
+                    ? "Assets in Storage (Ready to Assign)"
                     : selectedEmployee
                     ? `Assets assigned to ${selectedEmployee}`
                     : "Select an employee to view assets"}
@@ -760,7 +759,7 @@ const StaffView: React.FC = () => {
                 {filteredAssets.length === 0 ? (
                   <div className="p-12 text-center text-slate-400 dark:text-slate-500">
                     {mode === "onboard" ? (
-                      "No unassigned assets found."
+                      "No assets available in storage."
                     ) : selectedEmployee ? (
                       "No assets assigned to this user."
                     ) : (
