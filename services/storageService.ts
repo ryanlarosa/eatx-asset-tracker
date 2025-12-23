@@ -920,6 +920,21 @@ export const createPendingHandover = async (
   return id;
 };
 
+export const listenToPendingHandovers = (
+  cb: (pending: PendingHandover[]) => void
+) => {
+  return onSnapshot(
+    query(
+      collection(db, getColName("pendingHandovers")),
+      where("status", "==", "Pending")
+    ),
+    (s) => cb(snapToData<PendingHandover>(s))
+  );
+};
+
+export const deletePendingHandover = async (id: string) =>
+  deleteDoc(doc(db, getColName("pendingHandovers"), id));
+
 export const getPendingHandover = async (
   id: string
 ): Promise<PendingHandover | undefined> => {
