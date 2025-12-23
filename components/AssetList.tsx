@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import { Asset, ASSET_STATUSES, AssetStatus } from "../types";
+// Added ShoppingCart to the lucide-react imports to fix 'Cannot find name ShoppingCart'
 import {
   Edit2,
   Trash2,
@@ -13,7 +14,7 @@ import {
   Lock,
   Copy,
   Building2,
-  ShoppingCart,
+  ShoppingBag,
   Calendar,
   Columns,
   Check,
@@ -26,6 +27,8 @@ import {
   FileOutput,
   QrCode,
   X,
+  CheckCircle2,
+  ShoppingCart,
 } from "lucide-react";
 import {
   importAssetsBulk,
@@ -153,9 +156,8 @@ const AssetList: React.FC<AssetListProps> = ({
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []); // Only run on mount for config
+  }, []);
 
-  // Persist Filters & Columns
   useEffect(() => {
     localStorage.setItem("eatx_filter_search", searchTerm);
     localStorage.setItem("eatx_filter_status", filterStatus);
@@ -179,7 +181,6 @@ const AssetList: React.FC<AssetListProps> = ({
     localStorage.setItem("eatx_table_columns", JSON.stringify(visibleColumns));
   }, [visibleColumns]);
 
-  // Optimization: useMemo for filtering
   const filteredAssets = useMemo(() => {
     return assets.filter((asset) => {
       const matchesSearch =
@@ -254,9 +255,9 @@ const AssetList: React.FC<AssetListProps> = ({
       case "Active":
         return "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800";
       case "Under Repair":
-        return "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800";
+        return "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-emerald-800";
       case "Retired":
-        return "bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800";
+        return "bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-slate-800";
       case "In Storage":
         return "bg-slate-100 text-slate-800 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700";
       case "Lost/Stolen":
@@ -318,7 +319,10 @@ const AssetList: React.FC<AssetListProps> = ({
     validatorSheet.getColumn(1).values = ["Categories", ...categories];
     validatorSheet.getColumn(2).values = ["Locations", ...locations];
     validatorSheet.getColumn(3).values = ["Statuses", ...ASSET_STATUSES];
-    validatorSheet.getColumn(4).values = ["Departments", ...departments];
+    validatorSheet.getColumn(4).values = [
+      "Departments",
+      ...(departments.length > 0 ? departments : ["N/A"]),
+    ];
 
     const sheet = workbook.addWorksheet("Assets");
     sheet.columns = [
@@ -356,7 +360,7 @@ const AssetList: React.FC<AssetListProps> = ({
       sheet.getCell(`F${i}`).dataValidation = {
         type: "list",
         allowBlank: true,
-        formulae: [`Validators!$D$2:$D$${departments.length + 1}`],
+        formulae: [`Validators!$D$2:$D$${Math.max(2, departments.length + 1)}`],
       };
     }
 
@@ -424,9 +428,9 @@ const AssetList: React.FC<AssetListProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Confirmation
+    // Explicit Confirmation
     const proceed = window.confirm(
-      `Proceed importing "${file.name}"? This may update existing assets and create new ones.`
+      `Proceed importing "${file.name}"? Existing items with matching IDs will be updated, others will be created.`
     );
     if (!proceed) {
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -444,9 +448,14 @@ const AssetList: React.FC<AssetListProps> = ({
       sheet.eachRow((row: any, rowNumber: number) => {
         if (rowNumber === 1) return;
         const getVal = (idx: number) => {
-          const val = row.getCell(idx).value;
-          if (val && typeof val === "object" && "text" in val) return val.text;
-          return val ? String(val).trim() : "";
+          const cell = row.getCell(idx);
+          if (
+            cell.value &&
+            typeof cell.value === "object" &&
+            "text" in (cell.value as any)
+          )
+            return (cell.value as any).text;
+          return cell.value ? String(cell.value).trim() : "";
         };
         const sysId = getVal(1);
         const name = getVal(2);
@@ -465,7 +474,7 @@ const AssetList: React.FC<AssetListProps> = ({
           purchaseCost: getVal(9) ? parseFloat(getVal(9)) : undefined,
           purchaseDate: getVal(10) || undefined,
           assignedEmployee: getVal(11) || "",
-          description: getVal(12) || "Imported/Updated via Excel",
+          description: getVal(12) || "Imported via Excel",
           lastUpdated: new Date().toISOString(),
         });
       });
@@ -474,11 +483,11 @@ const AssetList: React.FC<AssetListProps> = ({
         await importAssetsBulk(newAssets);
         setShowImportSuccess(newAssets.length);
       } else {
-        alert("No valid asset data found.");
+        alert("No valid data found in the spreadsheet.");
       }
     } catch (err) {
       console.error(err);
-      alert("Error parsing Excel file.");
+      alert("Error parsing file. Ensure it follows the template format.");
     } finally {
       setIsImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -864,7 +873,7 @@ const AssetList: React.FC<AssetListProps> = ({
                 <tr>
                   <td
                     colSpan={12}
-                    className="p-12 text-center text-slate-400 dark:text-slate-600"
+                    className="p-12 text-center text-slate-400 dark:text-slate-500"
                   >
                     No assets found matching your filters.
                   </td>
@@ -1076,31 +1085,31 @@ const AssetList: React.FC<AssetListProps> = ({
         </div>
       )}
 
-      {/* Import Success Modal */}
+      {/* Enhanced Import Success Modal */}
       {showImportSuccess !== null && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl max-w-sm w-full p-6 border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in">
-            <div className="flex flex-col items-center text-center gap-4">
-              <div className="bg-emerald-50 dark:bg-emerald-900/30 p-3 rounded-full text-emerald-600 dark:text-emerald-400">
-                <Check size={32} />
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-sm w-full p-8 border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in">
+            <div className="flex flex-col items-center text-center gap-6">
+              <div className="bg-emerald-50 dark:bg-emerald-900/20 p-5 rounded-full text-emerald-600 dark:text-emerald-400 shadow-sm border border-emerald-100 dark:border-emerald-900/30">
+                <CheckCircle2 size={48} />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                  Import Successful
+                <h3 className="text-2xl font-bold text-slate-900 dark:text-white">
+                  Import Complete
                 </h3>
-                <p className="text-slate-500 dark:text-slate-400 text-sm mt-2">
+                <p className="text-slate-500 dark:text-slate-400 text-sm mt-2 leading-relaxed">
                   Successfully processed{" "}
                   <span className="font-bold text-slate-900 dark:text-white">
                     {showImportSuccess}
                   </span>{" "}
-                  assets from the Excel file.
+                  assets from the spreadsheet. Your registry has been updated.
                 </p>
               </div>
               <button
                 onClick={() => setShowImportSuccess(null)}
-                className="w-full mt-4 py-2.5 bg-slate-900 dark:bg-blue-600 text-white rounded-lg font-bold hover:bg-black dark:hover:bg-blue-700 shadow-sm"
+                className="w-full py-3.5 bg-slate-900 dark:bg-blue-600 text-white rounded-2xl font-bold hover:bg-black dark:hover:bg-blue-700 shadow-lg shadow-slate-900/20 transition-all active:scale-95"
               >
-                Done
+                Great, thanks!
               </button>
             </div>
           </div>
