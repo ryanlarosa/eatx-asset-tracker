@@ -1,6 +1,10 @@
-// Fix: Use modular Firebase v9+ imports and ensure all required members are exported.
-import { initializeApp, getApps, getApp, deleteApp } from "firebase/app";
-import type { FirebaseApp } from "firebase/app";
+import {
+  initializeApp,
+  getApps,
+  getApp,
+  deleteApp,
+  FirebaseApp,
+} from "firebase/app";
 import {
   getFirestore,
   collection,
@@ -17,8 +21,6 @@ import {
   orderBy,
   limit,
   writeBatch,
-} from "firebase/firestore";
-import type {
   Firestore,
   QuerySnapshot,
   DocumentData,
@@ -29,8 +31,8 @@ import {
   signOut,
   onAuthStateChanged,
   createUserWithEmailAndPassword,
+  Auth,
 } from "firebase/auth";
-import type { Auth } from "firebase/auth";
 import {
   Asset,
   AssetLog,
@@ -120,6 +122,23 @@ export const setSandboxMode = (enabled: boolean) => {
 const isSandbox = getSandboxStatus;
 
 const getColName = (name: string) => (isSandbox() ? `sandbox_${name}` : name);
+
+// Added helper to fix missing createNotification error and reduce code duplication
+export const createNotification = async (
+  type: "info" | "warning" | "success" | "error",
+  title: string,
+  message: string,
+  link: string = ""
+) => {
+  await addDoc(collection(db, getColName("notifications")), {
+    type,
+    title,
+    message,
+    timestamp: new Date().toISOString(),
+    read: false,
+    link,
+  });
+};
 
 const DEFAULT_CONFIG: AppConfig = {
   categories: [
@@ -565,10 +584,7 @@ export const markAllNotificationsRead = async () => {
 
 export const listenToRequests = (cb: (reqs: AssetRequest[]) => void) => {
   return onSnapshot(
-    query(
-      collection(db, getColName("assetRequests")),
-      orderBy("createdAt", "desc")
-    ),
+    query(collection(db, getColName("requests")), orderBy("createdAt", "desc")),
     (snap) => {
       cb(snapToData<AssetRequest>(snap));
     }
@@ -585,20 +601,15 @@ export const createAssetRequest = async (req: Partial<AssetRequest>) => {
     status: "New",
     createdAt: new Date().toISOString(),
   };
-  await addDoc(
-    collection(db, getColName("assetRequests")),
-    sanitizeData(newReq)
-  );
+  await addDoc(collection(db, getColName("requests")), sanitizeData(newReq));
 
-  // Notify
-  await addDoc(collection(db, getColName("notifications")), {
-    type: "info",
-    title: "New Asset Request",
-    message: `${req.requesterName} requested a ${req.category} for ${req.department}.`,
-    timestamp: new Date().toISOString(),
-    read: false,
-    link: "/requests",
-  });
+  // Updated to use createNotification helper
+  await createNotification(
+    "info",
+    "New Asset Request",
+    `${req.requesterName} requested a ${req.category} for ${req.department}.`,
+    "/requests"
+  );
 
   await sendSystemEmail(
     "New Asset Request",
@@ -611,10 +622,7 @@ export const updateAssetRequest = async (
   id: string,
   updates: Partial<AssetRequest>
 ) => {
-  await updateDoc(
-    doc(db, getColName("assetRequests"), id),
-    sanitizeData(updates)
-  );
+  await updateDoc(doc(db, getColName("requests"), id), sanitizeData(updates));
 };
 
 export const fulfillAssetRequest = async (
@@ -627,7 +635,7 @@ export const fulfillAssetRequest = async (
   const timestamp = new Date().toISOString();
 
   // Update Request
-  batch.update(doc(db, getColName("assetRequests"), requestId), {
+  batch.update(doc(db, getColName("requests"), requestId), {
     status: "Deployed",
     linkedAssetId: assetId,
     resolutionNotes: notes,
@@ -659,7 +667,7 @@ export const fulfillAssetRequest = async (
 export const listenToIncidents = (cb: (tickets: IncidentReport[]) => void) => {
   return onSnapshot(
     query(
-      collection(db, getColName("incidentReports")),
+      collection(db, getColName("incidents")),
       orderBy("createdAt", "desc")
     ),
     (snap) => {
@@ -679,19 +687,17 @@ export const createIncidentReport = async (report: Partial<IncidentReport>) => {
     createdAt: new Date().toISOString(),
   };
   await addDoc(
-    collection(db, getColName("incidentReports")),
+    collection(db, getColName("incidents")),
     sanitizeData(newReport)
   );
 
-  // Notify
-  await addDoc(collection(db, getColName("notifications")), {
-    type: "warning",
-    title: "New Incident Reported",
-    message: `${report.reportedBy} reported an issue at ${report.location}.`,
-    timestamp: new Date().toISOString(),
-    read: false,
-    link: "/repairs",
-  });
+  // Updated to use createNotification helper
+  await createNotification(
+    "warning",
+    "New Incident Reported",
+    `${report.reportedBy} reported an issue at ${report.location}.`,
+    "/repairs"
+  );
 
   await sendSystemEmail(
     "New Incident Report",
@@ -705,13 +711,10 @@ export const updateIncidentReport = async (
   updates: Partial<IncidentReport>,
   updateAssetStatus: boolean = false
 ) => {
-  await updateDoc(
-    doc(db, getColName("incidentReports"), id),
-    sanitizeData(updates)
-  );
+  await updateDoc(doc(db, getColName("incidents"), id), sanitizeData(updates));
 
   if (updateAssetStatus && updates.status === "Resolved") {
-    const snap = await getDoc(doc(db, getColName("incidentReports"), id));
+    const snap = await getDoc(doc(db, getColName("incidents"), id));
     const data = snap.data() as IncidentReport;
     if (data.assetId) {
       await updateDoc(doc(db, getColName("assets"), data.assetId), {
@@ -739,9 +742,7 @@ export const processAssetReplacement = async (
   });
 
   // 2. Assign new asset
-  const ticketSnap = await getDoc(
-    doc(db, getColName("incidentReports"), ticketId)
-  );
+  const ticketSnap = await getDoc(doc(db, getColName("incidents"), ticketId));
   const ticketData = ticketSnap.data() as IncidentReport;
 
   batch.update(doc(db, getColName("assets"), newAssetId), {
@@ -752,7 +753,7 @@ export const processAssetReplacement = async (
   });
 
   // 3. Resolve ticket
-  batch.update(doc(db, getColName("incidentReports"), ticketId), {
+  batch.update(doc(db, getColName("incidents"), ticketId), {
     status: "Resolved",
     resolvedAt: timestamp,
     resolutionNotes: `Replaced with Asset ID: ${newAssetId}. ${notes}`,
@@ -806,6 +807,7 @@ export const deleteInvoice = async (id: string) => {
 // --- HANDOVER & SIGNING ---
 
 export const getHandoverDocuments = async (): Promise<HandoverDocument[]> => {
+  // Restored collection name to 'documents' to match your existing data
   const snap = await getDocs(
     query(collection(db, getColName("documents")), orderBy("date", "desc"))
   );
@@ -813,6 +815,7 @@ export const getHandoverDocuments = async (): Promise<HandoverDocument[]> => {
 };
 
 export const saveHandoverDocument = async (docData: HandoverDocument) => {
+  // Restored collection name to 'documents'
   await setDoc(
     doc(db, getColName("documents"), docData.id),
     sanitizeData(docData)
@@ -825,7 +828,7 @@ export const listenToPendingHandovers = (
   return onSnapshot(
     query(
       collection(db, getColName("pendingHandovers")),
-      orderBy("createdAt", "desc")
+      where("status", "==", "Pending")
     ),
     (snap) => {
       cb(snapToData<PendingHandover>(snap));
@@ -836,7 +839,8 @@ export const listenToPendingHandovers = (
 export const createPendingHandover = async (
   employeeName: string,
   assets: Asset[],
-  type: "Handover" | "Return"
+  type: "Handover" | "Return" | "Transfer",
+  targetName?: string
 ) => {
   const id = `pending-${Math.random().toString(36).substr(2, 9)}`;
   const pending: PendingHandover = {
@@ -852,6 +856,7 @@ export const createPendingHandover = async (
     createdBy: currentUserProfile?.email || "System",
     status: "Pending",
     type,
+    targetName,
   };
   await setDoc(doc(db, getColName("pendingHandovers"), id), pending);
   return id;
@@ -877,27 +882,45 @@ export const completePendingHandover = async (
   const data = snap.data() as PendingHandover;
 
   const docId = `doc-${Math.random().toString(36).substr(2, 9)}`;
+  const handoverType = data.type || "Handover";
+
+  // 1. Save Document
   const handoverDoc: HandoverDocument = {
     id: docId,
     employeeName: data.employeeName,
     assets: data.assetsSnapshot,
     signatureBase64: signature,
     date: new Date().toISOString(),
-    type: data.type,
-    status: data.type === "Return" ? "Pending" : "Completed",
+    type: handoverType,
+    // Assignments/Transfers are Completed immediately. Returns are Pending IT verification.
+    status: handoverType === "Return" ? "Pending" : "Completed",
   };
-
   await saveHandoverDocument(handoverDoc);
 
-  if (data.type === "Handover") {
+  // 2. Perform registry actions immediately for non-returns
+  if (handoverType === "Handover") {
     await bulkAssignAssets(data.assetIds, data.employeeName, docId);
-  } else if (data.type === "Return") {
-    // Return documents stay pending until IT verifies in StaffView
+  } else if (handoverType === "Transfer" && data.targetName) {
+    await bulkTransferAssets(data.assetIds, data.targetName, docId);
   }
 
+  // 3. Mark pending record as finished
   await updateDoc(doc(db, getColName("pendingHandovers"), id), {
     status: "Completed",
   });
+
+  const msg =
+    handoverType === "Return"
+      ? `${data.employeeName} has provided their return signature. IT Manager verification required.`
+      : `${data.employeeName} has digitally signed for ${data.assetsSnapshot.length} assets. Registry updated.`;
+
+  // Fixed missing createNotification error
+  await createNotification(
+    handoverType === "Return" ? "info" : "success",
+    "Signature Received",
+    msg,
+    "/staff"
+  );
 };
 
 // --- PUBLIC TRACKING ---
@@ -916,10 +939,10 @@ export interface PublicStatusResult {
 export const getPublicItemStatus = async (
   refId: string
 ): Promise<PublicStatusResult | null> => {
-  // Try Tickets
+  // Try Tickets (Incidents)
   const ticketSnap = await getDocs(
     query(
-      collection(db, getColName("incidentReports")),
+      collection(db, getColName("incidents")),
       where("ticketNumber", "==", refId)
     )
   );
@@ -940,7 +963,7 @@ export const getPublicItemStatus = async (
   // Try Requests
   const reqSnap = await getDocs(
     query(
-      collection(db, getColName("assetRequests")),
+      collection(db, getColName("requests")),
       where("requestNumber", "==", refId)
     )
   );
@@ -968,8 +991,8 @@ export const resetDatabase = async () => {
     "assets",
     "assetLogs",
     "projects",
-    "incidentReports",
-    "assetRequests",
+    "incidents",
+    "requests",
     "invoices",
     "documents",
     "pendingHandovers",
