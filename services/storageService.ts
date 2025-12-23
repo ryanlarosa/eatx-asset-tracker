@@ -807,14 +807,14 @@ export const deleteInvoice = async (id: string) => {
 
 export const getHandoverDocuments = async (): Promise<HandoverDocument[]> => {
   const snap = await getDocs(
-    query(collection(db, getColName("handoverDocs")), orderBy("date", "desc"))
+    query(collection(db, getColName("documents")), orderBy("date", "desc"))
   );
   return snapToData<HandoverDocument>(snap);
 };
 
 export const saveHandoverDocument = async (docData: HandoverDocument) => {
   await setDoc(
-    doc(db, getColName("handoverDocs"), docData.id),
+    doc(db, getColName("documents"), docData.id),
     sanitizeData(docData)
   );
 };
@@ -971,7 +971,7 @@ export const resetDatabase = async () => {
     "incidentReports",
     "assetRequests",
     "invoices",
-    "handoverDocs",
+    "documents",
     "pendingHandovers",
     "notifications",
     "tasks",
