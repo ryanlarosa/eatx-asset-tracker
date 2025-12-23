@@ -70,23 +70,37 @@ const HandoverModal: React.FC<HandoverModalProps> = ({
     }
   }, [isOpen, initialData, isReturn]);
 
-  // Handle Canvas Scaling
-  useEffect(() => {
+  // Handle Canvas Scaling - Sync buffer to visual size
+  const resizeCanvas = () => {
     if (isOpen && containerRef.current && canvasRef.current) {
-      const timer = setTimeout(() => {
-        const canvas = canvasRef.current!;
-        const container = containerRef.current!;
-        canvas.width = container.clientWidth;
-        canvas.height = container.clientHeight;
+      const canvas = canvasRef.current;
+      const rect = canvas.getBoundingClientRect();
+
+      // Clear only if size actually changed to avoid losing drawing on minor layout shifts
+      if (canvas.width !== rect.width || canvas.height !== rect.height) {
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+
         const ctx = canvas.getContext("2d");
         if (ctx) {
           ctx.lineWidth = 3;
           ctx.lineCap = "round";
+          ctx.lineJoin = "round";
           ctx.strokeStyle = "#000000";
         }
         setHasSignature(false);
-      }, 100);
-      return () => clearTimeout(timer);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      const timer = setTimeout(resizeCanvas, 150); // Allow modal animation to finish
+      window.addEventListener("resize", resizeCanvas);
+      return () => {
+        clearTimeout(timer);
+        window.removeEventListener("resize", resizeCanvas);
+      };
     }
   }, [step, isOpen]);
 
@@ -94,11 +108,21 @@ const HandoverModal: React.FC<HandoverModalProps> = ({
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
-    const clientX =
-      "touches" in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
-    const clientY =
-      "touches" in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
-    return { x: clientX - rect.left, y: clientY - rect.top };
+
+    let clientX, clientY;
+    if ("touches" in e) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = (e as React.MouseEvent).clientX;
+      clientY = (e as React.MouseEvent).clientY;
+    }
+
+    // Precise coordinates matching buffer resolution
+    return {
+      x: (clientX - rect.left) * (canvas.width / rect.width),
+      y: (clientY - rect.top) * (canvas.height / rect.height),
+    };
   };
 
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
@@ -112,6 +136,7 @@ const HandoverModal: React.FC<HandoverModalProps> = ({
 
   const draw = (e: React.MouseEvent | React.TouchEvent) => {
     if (!isDrawing) return;
+    if ("touches" in e && e.cancelable) e.preventDefault(); // Prevent scroll while drawing
     const pos = getPos(e);
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return;
@@ -169,8 +194,8 @@ const HandoverModal: React.FC<HandoverModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-2xl w-full max-h-[95vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-2xl w-full max-h-[95vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-300 mx-auto">
         <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
           <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
             <PenTool size={18} className="text-slate-400" />{" "}
@@ -188,60 +213,60 @@ const HandoverModal: React.FC<HandoverModalProps> = ({
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
+        <div className="p-6 md:p-8 overflow-y-auto flex-1 custom-scrollbar">
           {isReturn && (
             <div className="flex gap-4 mb-6">
               <div
                 className={`flex-1 p-3 rounded-2xl border transition-all ${
                   step === 0
-                    ? "bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800 ring-2 ring-blue-100 dark:ring-blue-900/10"
+                    ? "bg-blue-50 border-blue-300 dark:bg-blue-900/20 dark:border-blue-700 ring-4 ring-blue-100 dark:ring-blue-900/10"
                     : signatures.employee
                     ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800"
-                    : "bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700"
+                    : "bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700 opacity-60"
                 }`}
               >
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
                   1. Employee
                 </div>
                 {signatures.employee ? (
                   <img
                     src={signatures.employee}
-                    className="h-10 opacity-80 mix-blend-multiply dark:mix-blend-normal invert-0 dark:invert"
+                    className="h-10 opacity-90 mix-blend-multiply dark:mix-blend-normal invert-0 dark:invert"
                   />
                 ) : (
-                  <div className="h-10 flex items-center text-xs text-slate-400 italic">
-                    Pending...
+                  <div className="h-10 flex items-center text-[10px] text-slate-400 italic">
+                    Awaiting Sign...
                   </div>
                 )}
               </div>
               <div
                 className={`flex-1 p-3 rounded-2xl border transition-all ${
                   step === 1
-                    ? "bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800 ring-2 ring-blue-100 dark:ring-blue-900/10"
+                    ? "bg-blue-50 border-blue-300 dark:bg-blue-900/20 dark:border-blue-700 ring-4 ring-blue-100 dark:ring-blue-900/10"
                     : signatures.it
                     ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800"
-                    : "bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700"
+                    : "bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700 opacity-60"
                 }`}
               >
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
                   2. IT Dept
                 </div>
                 {signatures.it ? (
                   <img
                     src={signatures.it}
-                    className="h-10 opacity-80 mix-blend-multiply dark:mix-blend-normal invert-0 dark:invert"
+                    className="h-10 opacity-90 mix-blend-multiply dark:mix-blend-normal invert-0 dark:invert"
                   />
                 ) : (
-                  <div className="h-10 flex items-center text-xs text-slate-400 italic">
-                    Pending...
+                  <div className="h-10 flex items-center text-[10px] text-slate-400 italic">
+                    Awaiting Sign...
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          <div className="mb-6">
-            <h4 className="font-bold text-slate-900 dark:text-white mb-2">
+          <div className="mb-6 text-center md:text-left">
+            <h4 className="font-bold text-slate-900 dark:text-white text-lg mb-2">
               {type === "Return"
                 ? "Asset Return Declaration"
                 : "Acknowledgement of Receipt"}
@@ -293,7 +318,7 @@ const HandoverModal: React.FC<HandoverModalProps> = ({
                   <span className="font-medium text-slate-700 dark:text-slate-200">
                     {a.name}
                   </span>
-                  <span className="text-xs font-mono text-slate-400">
+                  <span className="text-xs font-mono text-slate-400 opacity-60">
                     {a.serialNumber || "N/A"}
                   </span>
                 </div>
@@ -301,7 +326,7 @@ const HandoverModal: React.FC<HandoverModalProps> = ({
             </div>
           </div>
 
-          <div>
+          <div className="w-full">
             <div className="flex justify-between items-end mb-3">
               <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                 {step === 0
@@ -317,11 +342,11 @@ const HandoverModal: React.FC<HandoverModalProps> = ({
             </div>
             <div
               ref={containerRef}
-              className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-3xl bg-slate-50 dark:bg-slate-200 touch-none h-[180px] shadow-inner relative"
+              className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-3xl bg-slate-50 dark:bg-slate-200 touch-none h-[200px] shadow-inner relative w-full overflow-hidden"
             >
               <canvas
                 ref={canvasRef}
-                className="w-full h-full cursor-crosshair rounded-3xl z-10 relative"
+                className="w-full h-full cursor-crosshair rounded-3xl z-10 relative touch-none"
                 onMouseDown={startDrawing}
                 onMouseMove={draw}
                 onMouseUp={stopDrawing}
@@ -332,7 +357,7 @@ const HandoverModal: React.FC<HandoverModalProps> = ({
               />
               {!hasSignature && (
                 <div className="absolute inset-0 flex items-center justify-center text-slate-300 dark:text-slate-400 text-sm font-medium z-0">
-                  Sign here
+                  Sign inside this box
                 </div>
               )}
             </div>
@@ -351,18 +376,18 @@ const HandoverModal: React.FC<HandoverModalProps> = ({
               <button
                 onClick={handleSaveProgress}
                 disabled={isProcessing}
-                className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 font-bold text-sm flex items-center gap-2 shadow-lg shadow-emerald-900/10"
+                className="px-5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 font-bold text-sm flex items-center gap-2 shadow-sm"
               >
-                <Save size={16} /> Save Draft
+                <Save size={16} /> Draft
               </button>
             )}
             <button
               onClick={handleNext}
               disabled={!hasSignature || isProcessing}
-              className="px-8 py-2.5 bg-slate-900 dark:bg-blue-600 text-white rounded-xl hover:bg-black dark:hover:bg-blue-700 disabled:opacity-50 font-bold text-sm flex items-center gap-2 shadow-lg shadow-slate-900/20"
+              className="px-8 py-2.5 bg-slate-900 dark:bg-blue-600 text-white rounded-xl hover:bg-black dark:hover:bg-blue-700 disabled:opacity-50 font-bold text-sm flex items-center gap-2 shadow-xl shadow-slate-900/20"
             >
               {isProcessing ? (
-                "Saving..."
+                "Processing..."
               ) : step === totalSteps - 1 ? (
                 <>
                   Complete <Check size={18} />

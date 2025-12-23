@@ -54,22 +54,33 @@ const SignHandover: React.FC = () => {
     load();
   }, [id]);
 
-  // Handle Canvas Resizing for responsive width
-  useEffect(() => {
-    if (!loading && pending && canvasRef.current && containerRef.current) {
+  // Robust Canvas Sizing Logic
+  const resizeCanvas = () => {
+    if (canvasRef.current && containerRef.current) {
       const canvas = canvasRef.current;
-      const container = containerRef.current;
-
-      // Set canvas size to match displayed size
-      canvas.width = container.clientWidth;
-      canvas.height = container.clientHeight;
+      const rect = canvas.getBoundingClientRect();
+      // Sync the internal buffer to the actual display size
+      canvas.width = rect.width;
+      canvas.height = rect.height;
 
       const ctx = canvas.getContext("2d");
       if (ctx) {
         ctx.lineWidth = 3;
         ctx.lineCap = "round";
+        ctx.lineJoin = "round";
         ctx.strokeStyle = "#000000";
       }
+    }
+  };
+
+  useEffect(() => {
+    if (!loading && pending) {
+      // Initial resize
+      resizeCanvas();
+      // Watch for container size changes
+      const observer = new ResizeObserver(resizeCanvas);
+      if (containerRef.current) observer.observe(containerRef.current);
+      return () => observer.disconnect();
     }
   }, [loading, pending]);
 
@@ -77,16 +88,24 @@ const SignHandover: React.FC = () => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
-    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
-    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+
+    let clientX, clientY;
+    if ("touches" in e) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+
+    // Calculate position relative to the element, matching the scale of the buffer
     return {
-      x: clientX - rect.left,
-      y: clientY - rect.top,
+      x: (clientX - rect.left) * (canvas.width / rect.width),
+      y: (clientY - rect.top) * (canvas.height / rect.height),
     };
   };
 
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
-    if ("touches" in e) e.preventDefault();
     const pos = getPos(e);
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return;
@@ -97,7 +116,10 @@ const SignHandover: React.FC = () => {
 
   const draw = (e: React.MouseEvent | React.TouchEvent) => {
     if (!isDrawing) return;
-    if ("touches" in e) e.preventDefault();
+    if ("touches" in e) {
+      // Prevent scrolling while signing
+      if (e.cancelable) e.preventDefault();
+    }
     const pos = getPos(e);
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return;
@@ -121,7 +143,10 @@ const SignHandover: React.FC = () => {
     if (!id || !canvasRef.current) return;
     setIsSubmitting(true);
     try {
-      await completePendingHandover(id, canvasRef.current.toDataURL());
+      await completePendingHandover(
+        id,
+        canvasRef.current.toDataURL("image/png")
+      );
       setSuccess(true);
     } catch (e) {
       alert("Failed to submit. Please try again.");
@@ -177,7 +202,7 @@ const SignHandover: React.FC = () => {
     );
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4 md:p-8 relative">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4 md:p-8 relative overflow-x-hidden">
       {isSandbox && (
         <div className="fixed top-0 left-0 right-0 bg-amber-500 text-white text-[10px] font-bold text-center py-1 z-50 flex items-center justify-center gap-2 shadow-sm tracking-widest uppercase">
           <Database size={10} /> Testing Mode (Sandbox)
@@ -185,21 +210,23 @@ const SignHandover: React.FC = () => {
       )}
 
       <div
-        className={`max-w-xl w-full bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in slide-in-from-bottom-4 duration-500`}
+        className={`w-full max-w-xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in slide-in-from-bottom-4 duration-500 mx-auto`}
       >
         <div className="bg-slate-900 dark:bg-blue-600 p-8 text-white text-center">
-          <div className="bg-white/10 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm border border-white/20">
+          <div className="bg-white/10 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm border border-white/20 shadow-lg">
             <MonitorSmartphone size={32} />
           </div>
-          <h1 className="text-2xl font-bold">EatX IT Asset Handover</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            EatX IT Asset Handover
+          </h1>
           <p className="text-slate-300 dark:text-blue-100 text-sm mt-1">
             Digital Receipt & Acknowledgement
           </p>
         </div>
 
-        <div className="p-6 md:p-10">
-          <div className="mb-8">
-            <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+        <div className="p-6 md:p-10 flex flex-col items-center">
+          <div className="w-full mb-8 text-center md:text-left">
+            <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-lg">
               Hello{" "}
               <span className="font-bold text-slate-900 dark:text-white">
                 {pending?.employeeName}
@@ -212,7 +239,7 @@ const SignHandover: React.FC = () => {
             </p>
           </div>
 
-          <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 mb-8">
+          <div className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 mb-8">
             <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">
               Assigned Assets
             </h3>
@@ -233,25 +260,26 @@ const SignHandover: React.FC = () => {
             </div>
           </div>
 
-          <div className="mb-8">
+          <div className="w-full mb-8">
             <div className="flex justify-between items-end mb-3">
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                <PenTool size={14} className="inline mr-1.5" /> Draw Signature
+                <PenTool size={14} className="inline mr-1.5 text-slate-400" />{" "}
+                Draw Signature
               </label>
               <button
                 onClick={clearCanvas}
-                className="text-xs text-red-600 dark:text-red-400 font-bold hover:underline"
+                className="text-xs text-red-600 dark:text-red-400 font-bold hover:underline transition-all"
               >
                 Clear
               </button>
             </div>
             <div
               ref={containerRef}
-              className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl bg-slate-50 dark:bg-slate-200 touch-none relative overflow-hidden h-[180px] shadow-inner"
+              className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl bg-slate-50 dark:bg-slate-200 touch-none relative overflow-hidden h-[200px] shadow-inner w-full"
             >
               <canvas
                 ref={canvasRef}
-                className="w-full h-full cursor-crosshair relative z-10"
+                className="w-full h-full cursor-crosshair relative z-10 touch-none"
                 onMouseDown={startDrawing}
                 onMouseMove={draw}
                 onMouseUp={stopDrawing}
@@ -271,7 +299,7 @@ const SignHandover: React.FC = () => {
           <button
             onClick={handleSubmit}
             disabled={!hasSignature || isSubmitting}
-            className="w-full bg-slate-900 dark:bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-black dark:hover:bg-blue-700 disabled:opacity-50 transition-all flex justify-center items-center gap-3 shadow-lg shadow-slate-900/20 dark:shadow-blue-900/20"
+            className="w-full bg-slate-900 dark:bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-black dark:hover:bg-blue-700 disabled:opacity-50 transition-all flex justify-center items-center gap-3 shadow-xl shadow-slate-900/20 dark:shadow-blue-900/20"
           >
             {isSubmitting ? (
               <Loader2 className="animate-spin" />
@@ -280,8 +308,8 @@ const SignHandover: React.FC = () => {
             )}
           </button>
 
-          <p className="text-[10px] text-slate-400 text-center mt-6 uppercase tracking-tight">
-            Handover ID: {id}
+          <p className="text-[10px] text-slate-400 text-center mt-6 uppercase tracking-widest font-medium opacity-50">
+            Handover Ref: {id}
           </p>
         </div>
       </div>
