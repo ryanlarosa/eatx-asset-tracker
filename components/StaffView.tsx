@@ -70,9 +70,9 @@ const StaffView: React.FC = () => {
     type: "Handover" | "Return" | "Transfer";
     employeeName: string;
     targetName?: string;
-    assets: Asset[]; // Or derived from assets
-    assetsSnapshot?: { id: string; name: string; serialNumber: string }[]; // For resuming, we use snapshot
-    docId?: string; // If resuming
+    assets: Asset[];
+    assetsSnapshot?: { id: string; name: string; serialNumber: string }[];
+    docId?: string;
     initialData?: { employeeSig?: string; itSig?: string };
   }>({ isOpen: false, type: "Handover", employeeName: "", assets: [] });
 
@@ -95,7 +95,6 @@ const StaffView: React.FC = () => {
   }, [view]);
 
   useEffect(() => {
-    // Clear selection if assets change status
     setSelectedAssetIds((prev) => {
       const newSet = new Set<string>();
       prev.forEach((id) => {
@@ -174,13 +173,10 @@ const StaffView: React.FC = () => {
         targetEmployee,
         selectedAssetsList
       );
-
-      // Append env param if sandbox
       const isSandbox = getSandboxStatus();
       const link = `${window.location.origin}/#/sign/${pendingId}${
         isSandbox ? "?env=sandbox" : ""
       }`;
-
       setLinkModal({ open: true, link, name: targetEmployee });
       setSelectedAssetIds(new Set());
       setTargetEmployee("");
@@ -192,11 +188,7 @@ const StaffView: React.FC = () => {
   };
 
   const handleDeletePending = async (id: string) => {
-    if (
-      confirm(
-        "Revoke this sign link? The employee will no longer be able to complete the handover using this link."
-      )
-    ) {
+    if (confirm("Revoke this sign link?")) {
       await deletePendingHandover(id);
       setSuccessMsg("Sign link revoked.");
       setTimeout(() => setSuccessMsg(""), 3000);
@@ -230,7 +222,7 @@ const StaffView: React.FC = () => {
       isOpen: true,
       type: doc.type,
       employeeName: doc.employeeName,
-      assets: [], // We use assetsSnapshot
+      assets: [],
       assetsSnapshot: doc.assets,
       docId: doc.id,
       initialData: {
@@ -247,14 +239,11 @@ const StaffView: React.FC = () => {
   }) => {
     setIsProcessing(true);
     try {
-      // Use existing ID if resuming, or create new
       const docId =
         signModal.docId || "doc-" + Math.random().toString(36).substr(2, 9);
-
       const docData: HandoverDocument = {
         id: docId,
         employeeName: signModal.employeeName,
-        // Use snapshot if resuming, else map current assets
         assets:
           signModal.assetsSnapshot ||
           signModal.assets.map((a) => ({
@@ -268,18 +257,12 @@ const StaffView: React.FC = () => {
         type: signModal.type,
         status: sigs.status,
       };
-
       await saveHandoverDocument(docData);
-
       const assetIds = signModal.assetsSnapshot
         ? signModal.assetsSnapshot.map((a) => a.id)
         : signModal.assets.map((a) => a.id);
-
       if (signModal.type === "Return") {
-        // If IT signed, we consider them returned to storage
-        if (sigs.itSig) {
-          await bulkReturnAssets(assetIds, docId);
-        }
+        if (sigs.itSig) await bulkReturnAssets(assetIds, docId);
         setSuccessMsg(
           sigs.status === "Completed" ? "Return Finalized." : "Progress Saved."
         );
@@ -289,15 +272,12 @@ const StaffView: React.FC = () => {
           `Successfully transferred assets to ${signModal.targetName}`
         );
       }
-
       setSignModal({ ...signModal, isOpen: false });
       setSelectedAssetIds(new Set());
       setTargetEmployee("");
-      if (!signModal.docId && selectedAssetIds.size === filteredAssets.length) {
+      if (!signModal.docId && selectedAssetIds.size === filteredAssets.length)
         setSelectedEmployee(null);
-      }
       if (view === "documents") loadDocuments();
-
       setTimeout(() => setSuccessMsg(""), 4000);
     } catch (e) {
       alert("Error processing handover.");
@@ -316,7 +296,7 @@ const StaffView: React.FC = () => {
       year: "numeric",
     });
 
-    const title =
+    const docTitle =
       doc.type === "Return"
         ? "ASSET RETURN FORM"
         : doc.type === "Transfer"
@@ -328,73 +308,86 @@ const StaffView: React.FC = () => {
         ? `I, <b>${doc.employeeName}</b>, confirm the return of the following company assets. I declare that these items are being returned in the condition they were issued, subject to normal wear and tear.`
         : `I, <b>${doc.employeeName}</b>, acknowledge receipt/transfer of the following company assets. I agree to use them for company business and maintain them in good condition.`;
 
-    let footerContent = "";
-
+    let signatureBlock = "";
     if (doc.type === "Return") {
-      // If incomplete, hide missing blocks or show blank
       const empSig = doc.signatureBase64
         ? `<img src="${doc.signatureBase64}" class="signature-img" />`
-        : '<div style="height:60px; color:#ccc;">Pending</div>';
+        : '<div style="height:60px; color:#ccc; line-height:60px;">Pending Signature</div>';
       const itSig = doc.itSignatureBase64
         ? `<img src="${doc.itSignatureBase64}" class="signature-img" />`
-        : '<div style="height:60px; color:#ccc;">Pending</div>';
-
-      footerContent = `
-            <table class="signatures-table">
-                <tr>
-                    <td class="sig-cell">
-                        ${empSig}
-                        <div><strong>Employee:</strong> ${doc.employeeName}</div>
-                        <div class="timestamp">Date: ${dateStr}</div>
-                    </td>
-                    <td class="sig-cell">
-                        ${itSig}
-                        <div><strong>IT Verified</strong></div>
-                        <div class="timestamp">Date: ${dateStr}</div>
-                    </td>
-                </tr>
-            </table>
+        : '<div style="height:60px; color:#ccc; line-height:60px;">Awaiting IT Verification</div>';
+      signatureBlock = `
+            <div class="sig-section">
+                <div class="sig-box">
+                    ${empSig}
+                    <div class="sig-label"><strong>Employee:</strong> ${doc.employeeName}</div>
+                    <div class="timestamp">Date: ${dateStr}</div>
+                </div>
+                <div class="sig-box">
+                    ${itSig}
+                    <div class="sig-label"><strong>Verified By:</strong> IT Department</div>
+                    <div class="timestamp">Date: ${dateStr}</div>
+                </div>
+            </div>
           `;
     } else {
-      footerContent = `
-            <div class="signature-box">
-                <img src="${
-                  doc.signatureBase64
-                }" class="signature-img" alt="Digital Signature" />
-                <div><strong>Signed by:</strong> ${doc.employeeName}</div>
-                <div class="timestamp">Digitally Signed: ${new Date(
-                  doc.date
-                ).toLocaleString()}</div>
+      signatureBlock = `
+            <div class="sig-section">
+                <div class="sig-box">
+                    <img src="${
+                      doc.signatureBase64
+                    }" class="signature-img" alt="Digital Signature" />
+                    <div class="sig-label"><strong>Acknowledged by:</strong> ${
+                      doc.employeeName
+                    }</div>
+                    <div class="timestamp">Digitally Signed: ${new Date(
+                      doc.date
+                    ).toLocaleString()}</div>
+                </div>
             </div>
           `;
     }
+
+    const isCompleted = doc.status === "Completed";
+    const statusLabel = isCompleted ? "COMPLETED" : "PENDING IT VERIFICATION";
+    const statusColor = isCompleted ? "#059669" : "#d97706";
 
     const htmlContent = `
         <!DOCTYPE html>
         <html>
         <head>
-            <title>${title} - ${doc.employeeName}</title>
+            <title>${docTitle} - ${doc.employeeName}</title>
             <style>
-                body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #111; max-width: 800px; margin: 0 auto; }
-                .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 20px; margin-bottom: 30px; }
-                .logo { font-size: 24px; font-weight: bold; letter-spacing: 1px; margin-bottom: 5px; }
-                .title { font-size: 18px; font-weight: bold; color: #444; }
-                .meta { margin-bottom: 30px; }
-                .meta-row { display: flex; justify-content: space-between; margin-bottom: 10px; }
-                .declaration { margin-bottom: 20px; line-height: 1.5; background: #f9f9f9; padding: 15px; border-radius: 4px; border-left: 4px solid #333; }
-                table { width: 100%; border-collapse: collapse; margin-bottom: 40px; }
-                th { background: #eee; text-align: left; padding: 10px; border: 1px solid #ccc; font-size: 12px; text-transform: uppercase; }
-                td { padding: 10px; border: 1px solid #ccc; font-size: 14px; }
+                @page { margin: 15mm; size: A4; }
+                body { font-family: 'Inter', 'Segoe UI', Arial, sans-serif; padding: 0; color: #111; line-height: 1.4; font-size: 11pt; }
                 
-                .footer { margin-top: 60px; page-break-inside: avoid; }
-                .signature-box { border-top: 1px solid #ccc; padding-top: 10px; width: 250px; }
-                .signature-img { max-height: 60px; display: block; margin-bottom: 10px; }
-                .timestamp { font-size: 10px; color: #666; margin-top: 5px; font-family: monospace; }
+                .page-header { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 25px; border-bottom: 1px solid #ddd; margin-bottom: 40px; }
+                .logo-container { flex: 1; }
+                .eatx-logo { font-size: 48px; font-weight: 900; letter-spacing: -2px; line-height: 0.8; margin-bottom: 8px; color: #000; }
+                .eatx-tagline { font-size: 9px; font-weight: 700; letter-spacing: 1.5px; color: #333; text-transform: uppercase; }
+                
+                .company-info { flex: 1.2; text-align: right; font-size: 8.5pt; color: #444; line-height: 1.6; }
+                .company-name { font-weight: 800; color: #000; margin-bottom: 3px; font-size: 10.5pt; }
+                
+                .doc-identity { margin-bottom: 35px; }
+                .doc-title { font-size: 22pt; font-weight: 900; color: #000; margin-bottom: 12px; border-bottom: 4px solid #000; padding-bottom: 5px; display: inline-block; letter-spacing: -0.5px; }
+                
+                .meta-table { width: 100%; margin-bottom: 25px; font-size: 10.5pt; border-collapse: collapse; }
+                .meta-table td { padding: 6px 0; border-bottom: 1px solid #f1f5f9; }
+                
+                .declaration { margin-bottom: 35px; background: #f8fafc; padding: 25px; border-radius: 12px; border-left: 6px solid #000; font-style: italic; font-size: 10.5pt; color: #334155; }
+                
+                table.items-table { width: 100%; border-collapse: collapse; margin-bottom: 50px; border-radius: 8px; overflow: hidden; }
+                table.items-table th { background: #f1f5f9; text-align: left; padding: 14px; border: 1px solid #e2e8f0; font-size: 9.5pt; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; }
+                table.items-table td { padding: 14px; border: 1px solid #e2e8f0; font-size: 10.5pt; }
+                
+                .sig-section { display: flex; gap: 60px; margin-top: 60px; page-break-inside: avoid; }
+                .sig-box { flex: 1; border-top: 2px solid #333; padding-top: 15px; }
+                .signature-img { max-height: 60px; display: block; margin-bottom: 10px; filter: grayscale(1) contrast(1.2); }
+                .sig-label { font-size: 9.5pt; font-weight: 700; color: #1e293b; }
+                .timestamp { font-size: 8.5pt; color: #64748b; font-family: 'Courier New', Courier, monospace; margin-top: 4px; }
 
-                /* Multi-sig table */
-                .signatures-table { width: 100%; border: none; margin-top: 20px; }
-                .signatures-table td { border: none; padding: 10px; vertical-align: top; width: 50%; }
-                .sig-cell { border-top: 1px solid #ccc !important; }
+                .page-footer { position: fixed; bottom: 0; left: 0; right: 0; border-top: 1px solid #eee; padding-top: 10px; text-align: center; font-size: 8pt; color: #94a3b8; font-style: italic; }
 
                 @media print {
                     body { padding: 0; }
@@ -403,42 +396,52 @@ const StaffView: React.FC = () => {
             </style>
         </head>
         <body>
-            <div class="header">
-                <div class="logo">EATX IT</div>
-                <div class="title">${title}</div>
+            <div class="page-header">
+                <div class="logo-container">
+                    <div class="eatx-logo">eatx.</div>
+                    <div class="eatx-tagline">Creating Concepts of the Future</div>
+                </div>
+                <div class="company-info">
+                    <div class="company-name">EatX Facilities Management LLC</div>
+                    Office No. 2005-06, Burj Al Salam Building No. 2735391504,<br>
+                    Sheikh Zayed Road, Trade Centre First,<br>
+                    Dubai, United Arab Emirates, 122500<br>
+                    Tel: +971 4229 5775 • TRN: 100558980700003
+                </div>
             </div>
 
-            <div class="meta">
-                <div class="meta-row">
-                    <strong>Employee Name:</strong> <span>${
-                      doc.employeeName
-                    }</span>
-                </div>
-                <div class="meta-row">
-                    <strong>Transaction Date:</strong> <span>${dateStr}</span>
-                </div>
-                <div class="meta-row">
-                    <strong>Document ID:</strong> <span style="font-family: monospace">${
-                      doc.id
-                    }</span>
-                </div>
-                ${
-                  doc.status
-                    ? `<div class="meta-row"><strong>Status:</strong> <span>${doc.status}</span></div>`
-                    : ""
-                }
+            <div class="doc-identity">
+                <div class="doc-title">${docTitle}</div>
+                <table class="meta-table">
+                    <tr>
+                        <td width="160"><strong>Employee Name:</strong></td>
+                        <td style="color: #000; font-weight: 600;">${
+                          doc.employeeName
+                        }</td>
+                        <td width="100" align="right"><strong>Date:</strong></td>
+                        <td width="140" align="right">${dateStr}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Document ID:</strong></td>
+                        <td style="font-family: monospace; font-size: 9pt;">${
+                          doc.id
+                        }</td>
+                        <td align="right"><strong>Status:</strong></td>
+                        <td align="right" style="font-weight: 800; color: ${statusColor};">${statusLabel}</td>
+                    </tr>
+                </table>
             </div>
 
             <div class="declaration">
                 ${declaration}
             </div>
 
-            <table>
+            <table class="items-table">
                 <thead>
                     <tr>
-                        <th width="50">#</th>
-                        <th>Asset Name</th>
-                        <th width="150">Serial Number</th>
+                        <th width="45">#</th>
+                        <th>Asset Name / Description</th>
+                        <th width="200">Serial Number</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -446,9 +449,13 @@ const StaffView: React.FC = () => {
                       .map(
                         (a, i) => `
                         <tr>
-                            <td>${i + 1}</td>
-                            <td>${a.name}</td>
-                            <td style="font-family: monospace">${
+                            <td align="center" style="color: #94a3b8;">${
+                              i + 1
+                            }</td>
+                            <td style="font-weight: 600; color: #0f172a;">${
+                              a.name
+                            }</td>
+                            <td style="font-family: monospace; font-size: 10pt; color: #334155;">${
                               a.serialNumber || "N/A"
                             }</td>
                         </tr>
@@ -458,12 +465,18 @@ const StaffView: React.FC = () => {
                 </tbody>
             </table>
 
-            <div class="footer">
-                ${footerContent}
+            <div class="footer-spacer" style="height: 100px;"></div>
+
+            ${signatureBlock}
+
+            <div class="page-footer">
+                This document is generated through Eatx Asset Tracker
             </div>
             
             <script>
-                window.onload = function() { window.print(); }
+                window.onload = function() { 
+                    setTimeout(() => { window.print(); }, 500);
+                }
             </script>
         </body>
         </html>
@@ -925,7 +938,6 @@ const StaffView: React.FC = () => {
             documents.map((doc) => {
               const isPendingReturn =
                 doc.type === "Return" && doc.status !== "Completed";
-
               return (
                 <div
                   key={doc.id}
@@ -1040,7 +1052,6 @@ const StaffView: React.FC = () => {
                           >
                             <Printer size={16} />
                           </button>
-
                           {isPendingReturn && (
                             <button
                               onClick={() => handleResumeSign(doc)}
