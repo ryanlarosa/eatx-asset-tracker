@@ -1,30 +1,7 @@
-import { initializeApp, deleteApp, FirebaseApp } from "firebase/app";
-import {
-  getFirestore,
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  onSnapshot,
-  query,
-  where,
-  orderBy,
-  limit,
-  writeBatch,
-  QuerySnapshot,
-  DocumentData,
-} from "firebase/firestore";
-import {
-  getAuth,
-  signInWithEmailAndPassword,
-  signOut,
-  onAuthStateChanged,
-  createUserWithEmailAndPassword,
-} from "firebase/auth";
+// Fix: Refactored to use Firebase v8 namespaced API as the environment doesn't support v9 modular exports
+import firebase from "firebase/app";
+import "firebase/firestore";
+import "firebase/auth";
 import {
   Asset,
   AssetLog,
@@ -58,39 +35,39 @@ const firebaseConfig = {
 };
 
 const fallbackConfig = {
-  apiKey: "AIzaSyAK1PFmG5-uawZ2-QkCExJAIj3ovr5Gc8k",
-  authDomain: "assettrack-626da.firebaseapp.com",
-  projectId: "assettrack-626da",
-  storageBucket: "assettrack-626da.firebasestorage.app",
-  messagingSenderId: "833915106836",
-  appId: "1:833915106836:web:24f97e6161f3d5ef5f9901",
-  measurementId: "G-T7N92CG779",
+  apiKey: "PASTE_YOUR_API_KEY_HERE",
+  authDomain: "PASTE_YOUR_API_KEY_HERE",
+  projectId: "PASTE_YOUR_API_KEY_HERE",
+  storageBucket: "PASTE_YOUR_API_KEY_HERE",
+  messagingSenderId: "PASTE_YOUR_API_KEY_HERE",
+  appId: "PASTE_YOUR_API_KEY_HERE",
+  measurementId: "PASTE_YOUR_API_KEY_HERE",
 };
-
 const activeConfig = firebaseConfig.apiKey ? firebaseConfig : fallbackConfig;
 
-let app: FirebaseApp;
-try {
-  app = initializeApp(activeConfig);
-} catch (e: any) {
-  if (e.code === "app/duplicate-app") {
-    app = initializeApp(activeConfig, "Backup");
-  } else {
-    throw e;
-  }
+let app: firebase.app.App;
+if (!firebase.apps.length) {
+  app = firebase.initializeApp(activeConfig);
+} else {
+  app = firebase.app();
 }
 
-const db = getFirestore(app);
-const auth = getAuth(app);
+const db = app.firestore();
+const auth = app.auth();
 
 // --- HELPERS ---
 
-// Generic mapper to reduce repetition
-const snapToData = <T>(snapshot: QuerySnapshot<DocumentData>): T[] => {
-  return snapshot.docs.map((d) => d.data() as T);
+const snapToData = <T>(
+  snapshot:
+    | firebase.firestore.QuerySnapshot
+    | firebase.firestore.DocumentSnapshot
+): T[] => {
+  if ("docs" in snapshot) {
+    return snapshot.docs.map((d) => d.data() as T);
+  }
+  return [];
 };
 
-// Firestore does not accept 'undefined', so we must strip it.
 const sanitizeData = (data: any) => {
   const clean: any = {};
   Object.keys(data).forEach((key) => {
@@ -153,11 +130,11 @@ const authListeners: Function[] = [];
 
 export const getCurrentUserProfile = () => currentUserProfile;
 
-onAuthStateChanged(auth, async (firebaseUser) => {
+auth.onAuthStateChanged(async (firebaseUser) => {
   if (firebaseUser) {
     try {
-      const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
-      if (userDoc.exists()) {
+      const userDoc = await db.collection("users").doc(firebaseUser.uid).get();
+      if (userDoc.exists) {
         const data = userDoc.data() as UserProfile;
         currentUserProfile = { ...data, email: firebaseUser.email || "" };
       } else {
@@ -170,7 +147,7 @@ onAuthStateChanged(auth, async (firebaseUser) => {
           role: isSuperAdmin ? "admin" : "viewer",
           displayName: firebaseUser.email?.split("@")[0],
         };
-        await setDoc(doc(db, "users", firebaseUser.uid), newProfile);
+        await db.collection("users").doc(firebaseUser.uid).set(newProfile);
         currentUserProfile = newProfile;
       }
     } catch (e) {
@@ -197,11 +174,12 @@ export const subscribeToAuth = (cb: (user: UserProfile | null) => void) => {
 };
 
 export const loginUser = async (email: string, pass: string) =>
-  signInWithEmailAndPassword(auth, email, pass);
-export const logoutUser = async () => signOut(auth);
+  auth.signInWithEmailAndPassword(email, pass);
+export const logoutUser = async () => auth.signOut();
 
 export const getAllUsers = async (): Promise<UserProfile[]> => {
-  return snapToData<UserProfile>(await getDocs(query(collection(db, "users"))));
+  const snap = await db.collection("users").get();
+  return snap.docs.map((d) => d.data() as UserProfile);
 };
 
 export const adminCreateUser = async (
@@ -209,46 +187,44 @@ export const adminCreateUser = async (
   pass: string,
   role: UserRole
 ) => {
-  const secondaryApp = initializeApp(activeConfig, "SecondaryApp");
-  const secondaryAuth = getAuth(secondaryApp);
+  const secondaryApp = firebase.initializeApp(activeConfig, "SecondaryApp");
   try {
-    const userCred = await createUserWithEmailAndPassword(
-      secondaryAuth,
-      email,
-      pass
-    );
-    const uid = userCred.user.uid;
+    const userCred = await secondaryApp
+      .auth()
+      .createUserWithEmailAndPassword(email, pass);
+    const uid = userCred.user?.uid;
+    if (!uid) throw new Error("UID not generated");
     const newProfile: UserProfile = {
       uid,
       email: email.toLowerCase(),
       role,
       displayName: email.split("@")[0],
     };
-    await setDoc(doc(db, "users", uid), newProfile);
-    await signOut(secondaryAuth);
+    await db.collection("users").doc(uid).set(newProfile);
+    await secondaryApp.auth().signOut();
     return true;
   } finally {
-    await deleteApp(secondaryApp);
+    await secondaryApp.delete();
   }
 };
 
 export const updateUserRole = async (uid: string, role: UserRole) => {
-  await setDoc(doc(db, "users", uid), { role }, { merge: true });
+  await db.collection("users").doc(uid).set({ role }, { merge: true });
 };
 
 // --- CONFIG & EMAIL ---
 
 export const getAppConfig = async (): Promise<AppConfig> => {
   try {
-    const docRef = doc(db, getColName("settings"), "appConfig");
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
+    const docRef = db.collection(getColName("settings")).doc("appConfig");
+    const snap = await docRef.get();
+    if (snap.exists) {
       const data = snap.data() as AppConfig;
       if (!data.departments) data.departments = DEFAULT_CONFIG.departments;
       _cachedConfig = data;
       return data;
     } else {
-      await setDoc(docRef, DEFAULT_CONFIG);
+      await docRef.set(DEFAULT_CONFIG);
       _cachedConfig = DEFAULT_CONFIG;
       return DEFAULT_CONFIG;
     }
@@ -264,20 +240,20 @@ export const getCachedConfigSync = (): AppConfig =>
 
 export const saveAppConfig = async (config: AppConfig) => {
   _cachedConfig = config;
-  await setDoc(doc(db, getColName("settings"), "appConfig"), config);
+  await db.collection(getColName("settings")).doc("appConfig").set(config);
 };
 
 export const getEmailConfig = async (): Promise<EmailConfig | null> => {
   try {
-    const snap = await getDoc(doc(db, "settings", "emailConfig"));
-    return snap.exists() ? (snap.data() as EmailConfig) : null;
+    const snap = await db.collection("settings").doc("emailConfig").get();
+    return snap.exists ? (snap.data() as EmailConfig) : null;
   } catch (e) {
     return null;
   }
 };
 
 export const saveEmailConfig = async (config: EmailConfig) => {
-  await setDoc(doc(db, "settings", "emailConfig"), config);
+  await db.collection("settings").doc("emailConfig").set(config);
 };
 
 export const sendSystemEmail = async (
@@ -314,12 +290,13 @@ export const sendSystemEmail = async (
 export const listenToNotifications = (
   cb: (notifications: AppNotification[]) => void
 ) => {
-  const q = query(
-    collection(db, getColName("notifications")),
-    orderBy("timestamp", "desc"),
-    limit(20)
-  );
-  return onSnapshot(q, (snapshot) => cb(snapToData<AppNotification>(snapshot)));
+  return db
+    .collection(getColName("notifications"))
+    .orderBy("timestamp", "desc")
+    .limit(20)
+    .onSnapshot((snapshot) => {
+      cb(snapshot.docs.map((d) => d.data() as AppNotification));
+    });
 };
 
 export const createNotification = async (
@@ -330,7 +307,7 @@ export const createNotification = async (
 ) => {
   try {
     const id = "notif-" + Date.now() + Math.random().toString(36).substr(2, 5);
-    await setDoc(doc(db, getColName("notifications"), id), {
+    await db.collection(getColName("notifications")).doc(id).set({
       id,
       type,
       title,
@@ -345,16 +322,18 @@ export const createNotification = async (
 };
 
 export const markNotificationRead = async (id: string) => {
-  await updateDoc(doc(db, getColName("notifications"), id), { read: true });
+  await db
+    .collection(getColName("notifications"))
+    .doc(id)
+    .update({ read: true });
 };
 
 export const markAllNotificationsRead = async () => {
-  const q = query(
-    collection(db, getColName("notifications")),
-    where("read", "==", false)
-  );
-  const snap = await getDocs(q);
-  const batch = writeBatch(db);
+  const snap = await db
+    .collection(getColName("notifications"))
+    .where("read", "==", false)
+    .get();
+  const batch = db.batch();
   snap.forEach((d) => batch.update(d.ref, { read: true }));
   await batch.commit();
 };
@@ -362,43 +341,43 @@ export const markAllNotificationsRead = async () => {
 // --- TASKS ---
 
 export const listenToTasks = (cb: (tasks: Task[]) => void) => {
-  return onSnapshot(
-    query(collection(db, getColName("tasks")), orderBy("createdAt", "desc")),
-    (s) => cb(snapToData<Task>(s))
-  );
+  return db
+    .collection(getColName("tasks"))
+    .orderBy("createdAt", "desc")
+    .onSnapshot((s) => cb(s.docs.map((d) => d.data() as Task)));
 };
 
 export const saveTask = async (task: Task) =>
-  setDoc(doc(db, getColName("tasks"), task.id), sanitizeData(task));
+  db.collection(getColName("tasks")).doc(task.id).set(sanitizeData(task));
 
 export const deleteTask = async (id: string) =>
-  deleteDoc(doc(db, getColName("tasks"), id));
+  db.collection(getColName("tasks")).doc(id).delete();
 
 // --- ASSETS ---
 
 export const listenToAssets = (cb: (assets: Asset[]) => void) => {
-  return onSnapshot(query(collection(db, getColName("assets"))), (s) =>
-    cb(snapToData<Asset>(s))
-  );
+  return db
+    .collection(getColName("assets"))
+    .onSnapshot((s) => cb(s.docs.map((d) => d.data() as Asset)));
 };
 
 export const getAssets = async (): Promise<Asset[]> => {
-  return snapToData<Asset>(await getDocs(collection(db, getColName("assets"))));
+  const snap = await db.collection(getColName("assets")).get();
+  return snap.docs.map((d) => d.data() as Asset);
 };
 
 export const saveAsset = async (asset: Asset) => {
-  const docRef = doc(db, getColName("assets"), asset.id);
-  const docSnap = await getDoc(docRef);
-  const isNew = !docSnap.exists();
+  const docRef = db.collection(getColName("assets")).doc(asset.id);
+  const docSnap = await docRef.get();
+  const isNew = !docSnap.exists;
   const oldData = isNew ? null : (docSnap.data() as Asset);
 
-  // Sanitize data before saving to remove any undefined fields
   const dataToSave = sanitizeData({
     ...asset,
     lastUpdated: new Date().toISOString(),
   });
 
-  await setDoc(docRef, dataToSave);
+  await docRef.set(dataToSave);
 
   if (isNew) {
     await logAction(asset.id, "Created", `Asset Onboarded: ${asset.name}`);
@@ -439,18 +418,18 @@ export const saveAsset = async (asset: Asset) => {
 };
 
 export const deleteAsset = async (id: string) => {
-  const docRef = doc(db, getColName("assets"), id);
-  const snap = await getDoc(docRef);
-  const assetName = snap.exists() ? (snap.data() as Asset).name : "Unknown";
-  await deleteDoc(docRef);
+  const docRef = db.collection(getColName("assets")).doc(id);
+  const snap = await docRef.get();
+  const assetName = snap.exists ? (snap.data() as Asset).name : "Unknown";
+  await docRef.delete();
   await logAction(id, "Retired", `Asset ${assetName} deleted from registry`);
 };
 
 export const importAssetsBulk = async (newAssets: Asset[]) => {
-  const batch = writeBatch(db);
+  const batch = db.batch();
   newAssets.forEach((asset) => {
     const dataToSave = sanitizeData(asset);
-    batch.set(doc(db, getColName("assets"), asset.id), dataToSave);
+    batch.set(db.collection(getColName("assets")).doc(asset.id), dataToSave);
   });
   await batch.commit();
   await logAction(
@@ -468,12 +447,12 @@ export const importAssetsBulk = async (newAssets: Asset[]) => {
 // --- LOGS ---
 
 export const getAssetLogs = async (assetId: string): Promise<AssetLog[]> => {
-  const q = query(
-    collection(db, getColName("logs")),
-    where("assetId", "==", assetId),
-    orderBy("timestamp", "desc")
-  );
-  return snapToData<AssetLog>(await getDocs(q));
+  const snap = await db
+    .collection(getColName("logs"))
+    .where("assetId", "==", assetId)
+    .orderBy("timestamp", "desc")
+    .get();
+  return snap.docs.map((d) => d.data() as AssetLog);
 };
 
 const logAction = async (
@@ -484,7 +463,7 @@ const logAction = async (
   ticketId?: string
 ) => {
   try {
-    await addDoc(collection(db, getColName("logs")), {
+    await db.collection(getColName("logs")).add({
       assetId,
       action,
       details,
@@ -527,18 +506,18 @@ export const getStats = (assets: Asset[]): AssetStats => {
 // --- PROJECTS ---
 
 export const listenToProjects = (cb: (projects: Project[]) => void) => {
-  return onSnapshot(query(collection(db, getColName("projects"))), (s) =>
-    cb(snapToData<Project>(s))
-  );
+  return db
+    .collection(getColName("projects"))
+    .onSnapshot((s) => cb(s.docs.map((d) => d.data() as Project)));
 };
 
 export const saveProject = async (project: Project) => {
   const dataToSave = sanitizeData(project);
-  return setDoc(doc(db, getColName("projects"), project.id), dataToSave);
+  return db.collection(getColName("projects")).doc(project.id).set(dataToSave);
 };
 
 export const deleteProject = async (id: string) =>
-  deleteDoc(doc(db, getColName("projects"), id));
+  db.collection(getColName("projects")).doc(id).delete();
 
 export const getOverdueItems = async (
   projects: Project[]
@@ -561,9 +540,9 @@ export const getOverdueItems = async (
 export const listenToIncidents = (
   cb: (incidents: IncidentReport[]) => void
 ) => {
-  return onSnapshot(query(collection(db, getColName("incidents"))), (s) =>
-    cb(snapToData<IncidentReport>(s))
-  );
+  return db
+    .collection(getColName("incidents"))
+    .onSnapshot((s) => cb(s.docs.map((d) => d.data() as IncidentReport)));
 };
 
 export const createIncidentReport = async (
@@ -581,10 +560,13 @@ export const createIncidentReport = async (
     createdAt: new Date().toISOString(),
   };
 
-  await setDoc(doc(db, getColName("incidents"), id), sanitizeData(report));
+  await db
+    .collection(getColName("incidents"))
+    .doc(id)
+    .set(sanitizeData(report));
 
   if (data.assetId) {
-    await updateDoc(doc(db, getColName("assets"), data.assetId), {
+    await db.collection(getColName("assets")).doc(data.assetId).update({
       status: "Under Repair",
       lastUpdated: new Date().toISOString(),
     });
@@ -616,12 +598,12 @@ export const updateIncidentReport = async (
   updates: Partial<IncidentReport>,
   autoFixAsset: boolean = false
 ) => {
-  const ref = doc(db, getColName("incidents"), id);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) return;
+  const ref = db.collection(getColName("incidents")).doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) return;
   const incident = snap.data() as IncidentReport;
 
-  await updateDoc(ref, sanitizeData(updates));
+  await ref.update(sanitizeData(updates));
 
   if (incident.assetId) {
     if (
@@ -629,13 +611,15 @@ export const updateIncidentReport = async (
         updates.status || ""
       )
     ) {
-      await updateDoc(doc(db, getColName("assets"), incident.assetId), {
-        status: "Under Repair",
-      });
+      await db
+        .collection(getColName("assets"))
+        .doc(incident.assetId)
+        .update({ status: "Under Repair" });
     } else if (updates.status === "Resolved" && autoFixAsset) {
-      await updateDoc(doc(db, getColName("assets"), incident.assetId), {
-        status: "Active",
-      });
+      await db
+        .collection(getColName("assets"))
+        .doc(incident.assetId)
+        .update({ status: "Active" });
     }
     if (updates.status)
       await logAction(
@@ -668,17 +652,17 @@ export const processAssetReplacement = async (
   newAssetId: string,
   notes: string
 ) => {
-  const incidentRef = doc(db, getColName("incidents"), ticketId);
-  const incident = (await getDoc(incidentRef)).data() as IncidentReport;
+  const incidentRef = db.collection(getColName("incidents")).doc(ticketId);
+  const incidentSnap = await incidentRef.get();
+  const incident = incidentSnap.data() as IncidentReport;
 
-  // Retire old, Assign new, Close Ticket
-  const batch = writeBatch(db);
-  batch.update(doc(db, getColName("assets"), oldAssetId), {
+  const batch = db.batch();
+  batch.update(db.collection(getColName("assets")).doc(oldAssetId), {
     status: "Retired",
     assignedEmployee: "",
     lastUpdated: new Date().toISOString(),
   });
-  batch.update(doc(db, getColName("assets"), newAssetId), {
+  batch.update(db.collection(getColName("assets")).doc(newAssetId), {
     status: "Active",
     location: incident.location,
     lastUpdated: new Date().toISOString(),
@@ -723,9 +707,9 @@ export const processAssetReplacement = async (
 // --- REQUESTS ---
 
 export const listenToRequests = (cb: (reqs: AssetRequest[]) => void) => {
-  return onSnapshot(query(collection(db, getColName("requests"))), (s) =>
-    cb(snapToData<AssetRequest>(s))
-  );
+  return db
+    .collection(getColName("requests"))
+    .onSnapshot((s) => cb(s.docs.map((d) => d.data() as AssetRequest)));
 };
 
 export const createAssetRequest = async (
@@ -742,7 +726,7 @@ export const createAssetRequest = async (
     status: "New",
     createdAt: new Date().toISOString(),
   };
-  await setDoc(doc(db, getColName("requests"), id), sanitizeData(req));
+  await db.collection(getColName("requests")).doc(id).set(sanitizeData(req));
 
   const msg = `${data.requesterName} requested ${data.category}. Urgency: ${data.urgency}`;
   await createNotification("info", "New Asset Request", msg, "/requests");
@@ -764,10 +748,11 @@ export const updateAssetRequest = async (
   id: string,
   updates: Partial<AssetRequest>
 ) => {
-  const ref = doc(db, getColName("requests"), id);
-  await updateDoc(ref, sanitizeData(updates));
+  const ref = db.collection(getColName("requests")).doc(id);
+  await ref.update(sanitizeData(updates));
 
-  const req = (await getDoc(ref)).data() as AssetRequest;
+  const snap = await ref.get();
+  const req = snap.data() as AssetRequest;
   if (updates.status && req.requesterEmail && updates.status !== req.status) {
     await sendSystemEmail(
       `Request Update: ${req.requestNumber}`,
@@ -786,10 +771,11 @@ export const fulfillAssetRequest = async (
   notes: string,
   assignedTo: string
 ) => {
-  const reqRef = doc(db, getColName("requests"), id);
-  const req = (await getDoc(reqRef)).data() as AssetRequest;
+  const reqRef = db.collection(getColName("requests")).doc(id);
+  const snap = await reqRef.get();
+  const req = snap.data() as AssetRequest;
 
-  await updateDoc(doc(db, getColName("assets"), assetId), {
+  await db.collection(getColName("assets")).doc(assetId).update({
     status: "Active",
     assignedEmployee: assignedTo,
     department: req.department,
@@ -801,7 +787,7 @@ export const fulfillAssetRequest = async (
     `Fulfilled Request ${req.requestNumber} for ${assignedTo}`
   );
 
-  await updateDoc(reqRef, {
+  await reqRef.update({
     status: "Deployed",
     resolvedAt: new Date().toISOString(),
     linkedAssetId: assetId,
@@ -835,12 +821,10 @@ export const getPublicItemStatus = async (
 ): Promise<PublicStatusResult | null> => {
   const cleanId = refId.trim().toUpperCase();
 
-  const incSnap = await getDocs(
-    query(
-      collection(db, getColName("incidents")),
-      where("ticketNumber", "==", cleanId)
-    )
-  );
+  const incSnap = await db
+    .collection(getColName("incidents"))
+    .where("ticketNumber", "==", cleanId)
+    .get();
   if (!incSnap.empty) {
     const data = incSnap.docs[0].data() as IncidentReport;
     return {
@@ -855,12 +839,10 @@ export const getPublicItemStatus = async (
     };
   }
 
-  const reqSnap = await getDocs(
-    query(
-      collection(db, getColName("requests")),
-      where("requestNumber", "==", cleanId)
-    )
-  );
+  const reqSnap = await db
+    .collection(getColName("requests"))
+    .where("requestNumber", "==", cleanId)
+    .get();
   if (!reqSnap.empty) {
     const data = reqSnap.docs[0].data() as AssetRequest;
     return {
@@ -880,21 +862,27 @@ export const getPublicItemStatus = async (
 // --- INVOICES & HANDOVERS ---
 
 export const listenToInvoices = (cb: (inv: Invoice[]) => void) => {
-  return onSnapshot(query(collection(db, getColName("invoices"))), (s) =>
-    cb(snapToData<Invoice>(s))
-  );
+  return db
+    .collection(getColName("invoices"))
+    .onSnapshot((s) => cb(s.docs.map((d) => d.data() as Invoice)));
 };
 export const saveInvoice = async (invoice: Invoice) =>
-  setDoc(doc(db, getColName("invoices"), invoice.id), sanitizeData(invoice));
+  db
+    .collection(getColName("invoices"))
+    .doc(invoice.id)
+    .set(sanitizeData(invoice));
 export const deleteInvoice = async (id: string) =>
-  deleteDoc(doc(db, getColName("invoices"), id));
+  db.collection(getColName("invoices")).doc(id).delete();
 
-export const getHandoverDocuments = async (): Promise<HandoverDocument[]> =>
-  snapToData<HandoverDocument>(
-    await getDocs(collection(db, getColName("documents")))
-  );
+export const getHandoverDocuments = async (): Promise<HandoverDocument[]> => {
+  const snap = await db.collection(getColName("documents")).get();
+  return snap.docs.map((d) => d.data() as HandoverDocument);
+};
 export const saveHandoverDocument = async (docData: HandoverDocument) =>
-  setDoc(doc(db, getColName("documents"), docData.id), sanitizeData(docData));
+  db
+    .collection(getColName("documents"))
+    .doc(docData.id)
+    .set(sanitizeData(docData));
 
 export const createPendingHandover = async (
   employeeName: string,
@@ -903,80 +891,109 @@ export const createPendingHandover = async (
   targetName?: string
 ): Promise<string> => {
   const id = "ph-" + Date.now();
-  await setDoc(
-    doc(db, getColName("pendingHandovers"), id),
-    sanitizeData({
-      id,
-      employeeName,
-      assetIds: assets.map((a) => a.id),
-      assetsSnapshot: assets.map((a) => ({
-        id: a.id,
-        name: a.name,
-        serialNumber: a.serialNumber,
-      })),
-      createdAt: new Date().toISOString(),
-      createdBy: currentUserProfile?.email || "System",
-      status: "Pending",
-      type,
-      targetName,
-    } as PendingHandover)
-  );
+  await db
+    .collection(getColName("pendingHandovers"))
+    .doc(id)
+    .set(
+      sanitizeData({
+        id,
+        employeeName,
+        assetIds: assets.map((a) => a.id),
+        assetsSnapshot: assets.map((a) => ({
+          id: a.id,
+          name: a.name,
+          serialNumber: a.serialNumber,
+        })),
+        createdAt: new Date().toISOString(),
+        createdBy: currentUserProfile?.email || "System",
+        status: "Pending",
+        type,
+        targetName,
+      } as PendingHandover)
+    );
   return id;
 };
 
 export const listenToPendingHandovers = (
   cb: (pending: PendingHandover[]) => void
 ) => {
-  return onSnapshot(
-    query(
-      collection(db, getColName("pendingHandovers")),
-      where("status", "==", "Pending")
-    ),
-    (s) => cb(snapToData<PendingHandover>(s))
-  );
+  return db
+    .collection(getColName("pendingHandovers"))
+    .where("status", "==", "Pending")
+    .onSnapshot((s) => cb(s.docs.map((d) => d.data() as PendingHandover)));
 };
 
 export const deletePendingHandover = async (id: string) =>
-  deleteDoc(doc(db, getColName("pendingHandovers"), id));
+  db.collection(getColName("pendingHandovers")).doc(id).delete();
 
 export const getPendingHandover = async (
   id: string
 ): Promise<PendingHandover | undefined> => {
-  const snap = await getDoc(doc(db, getColName("pendingHandovers"), id));
-  return snap.exists() ? (snap.data() as PendingHandover) : undefined;
+  const snap = await db
+    .collection(getColName("pendingHandovers"))
+    .doc(id)
+    .get();
+  return snap.exists ? (snap.data() as PendingHandover) : undefined;
 };
 
 export const completePendingHandover = async (
   id: string,
   signature: string
 ) => {
-  const ref = doc(db, getColName("pendingHandovers"), id);
-  const pending = (await getDoc(ref)).data() as PendingHandover;
+  const ref = db.collection(getColName("pendingHandovers")).doc(id);
+  const snap = await ref.get();
+  const pending = snap.data() as PendingHandover;
   if (pending.status !== "Pending") throw new Error("Already completed");
 
-  await saveHandoverDocument({
-    id: "doc-" + Date.now(),
-    employeeName: pending.employeeName,
-    assets: pending.assetsSnapshot,
-    signatureBase64: signature,
-    date: new Date().toISOString(),
-    type: pending.type || "Handover",
-  });
+  const docId = "doc-" + Date.now();
+  const handoverType = pending.type || "Handover";
 
-  if (pending.type === "Return") {
-    await bulkReturnAssets(pending.assetIds);
-  } else if (pending.type === "Transfer" && pending.targetName) {
-    await bulkTransferAssets(pending.assetIds, pending.targetName);
+  // Process according to type
+  if (handoverType === "Return") {
+    // Returns still require IT verification (Pending)
+    await saveHandoverDocument({
+      id: docId,
+      employeeName: pending.employeeName,
+      assets: pending.assetsSnapshot,
+      signatureBase64: signature,
+      date: new Date().toISOString(),
+      type: handoverType,
+      status: "Pending",
+    });
   } else {
-    await bulkAssignAssets(pending.assetIds, pending.employeeName);
+    // Handovers and Transfers are processed immediately (Completed)
+    await saveHandoverDocument({
+      id: docId,
+      employeeName: pending.employeeName,
+      assets: pending.assetsSnapshot,
+      signatureBase64: signature,
+      date: new Date().toISOString(),
+      type: handoverType,
+      status: "Completed",
+    });
+
+    if (handoverType === "Transfer" && pending.targetName) {
+      await bulkTransferAssets(pending.assetIds, pending.targetName, docId);
+    } else {
+      await bulkAssignAssets(pending.assetIds, pending.employeeName, docId);
+    }
   }
 
-  await updateDoc(ref, { status: "Completed" });
+  await ref.update({ status: "Completed" });
 
-  const msg = `${pending.employeeName} has digitally signed for ${pending.assetsSnapshot.length} assets (${pending.type}).`;
-  await createNotification("success", "Handover Signed", msg, "/staff");
+  const msg =
+    handoverType === "Return"
+      ? `${pending.employeeName} has provided their return signature. IT Manager verification required.`
+      : `${pending.employeeName} has digitally signed for ${pending.assetsSnapshot.length} assets. Request finalized.`;
+
+  await createNotification(
+    handoverType === "Return" ? "info" : "success",
+    "Signature Received",
+    msg,
+    "/staff"
+  );
   await sendSystemEmail(
-    "Handover Signed",
+    "Signature Received",
     msg,
     `${window.location.origin}/#/staff`
   );
@@ -986,12 +1003,12 @@ export const completePendingHandover = async (
 
 const performBulkOp = async (
   assetIds: string[],
-  updateFn: (id: string) => object,
+  updateObj: object,
   logActionFn: (id: string) => Promise<void>
 ) => {
-  const batch = writeBatch(db);
+  const batch = db.batch();
   assetIds.forEach((id) =>
-    batch.update(doc(db, getColName("assets"), id), updateFn(id))
+    batch.update(db.collection(getColName("assets")).doc(id), updateObj)
   );
   await batch.commit();
   for (const id of assetIds) await logActionFn(id);
@@ -999,27 +1016,28 @@ const performBulkOp = async (
 
 export const bulkAssignAssets = async (
   assetIds: string[],
-  employeeName: string
+  employeeName: string,
+  docId?: string
 ) => {
   await performBulkOp(
     assetIds,
-    () => ({
+    {
       assignedEmployee: employeeName,
       status: "Active",
       lastUpdated: new Date().toISOString(),
-    }),
-    (id) => logAction(id, "Assigned", `Assigned to ${employeeName}`)
+    },
+    (id) => logAction(id, "Assigned", `Assigned to ${employeeName}`, docId)
   );
 };
 
 export const bulkReturnAssets = async (assetIds: string[], docId?: string) => {
   await performBulkOp(
     assetIds,
-    () => ({
+    {
       assignedEmployee: "",
       status: "In Storage",
       lastUpdated: new Date().toISOString(),
-    }),
+    },
     (id) => logAction(id, "Returned", `Returned to storage`, docId)
   );
 };
@@ -1031,10 +1049,7 @@ export const bulkTransferAssets = async (
 ) => {
   await performBulkOp(
     assetIds,
-    () => ({
-      assignedEmployee: targetName,
-      lastUpdated: new Date().toISOString(),
-    }),
+    { assignedEmployee: targetName, lastUpdated: new Date().toISOString() },
     (id) => logAction(id, "Transferred", `Transferred to ${targetName}`, docId)
   );
 };
@@ -1063,8 +1078,8 @@ export const resetDatabase = async () => {
   const prefix = isSandbox() ? "sandbox_" : "";
 
   for (const colName of collections) {
-    const snap = await getDocs(query(collection(db, prefix + colName)));
-    const batch = writeBatch(db);
+    const snap = await db.collection(prefix + colName).get();
+    const batch = db.batch();
     snap.docs.forEach((d) => batch.delete(d.ref));
     await batch.commit();
   }
@@ -1092,10 +1107,11 @@ export const renameMasterDataItem = async (
 
   await saveAppConfig(config);
 
-  const snapshot = await getDocs(
-    query(collection(db, getColName("assets")), where(type, "==", oldValue))
-  );
-  const batch = writeBatch(db);
+  const snapshot = await db
+    .collection(getColName("assets"))
+    .where(type, "==", oldValue)
+    .get();
+  const batch = db.batch();
   snapshot.docs.forEach((doc) => batch.update(doc.ref, { [type]: newValue }));
   await batch.commit();
 };

@@ -1,18 +1,8 @@
-export type AssetStatus =
-  | "Active"
-  | "In Storage"
-  | "Under Repair"
-  | "Retired"
-  | "Lost/Stolen";
-export const ASSET_STATUSES: AssetStatus[] = [
-  "Active",
-  "In Storage",
-  "Under Repair",
-  "Retired",
-  "Lost/Stolen",
-];
 
-export type UserRole = "admin" | "technician" | "viewer" | "sandbox_user";
+export type AssetStatus = 'Active' | 'In Storage' | 'Under Repair' | 'Retired' | 'Lost/Stolen';
+export const ASSET_STATUSES: AssetStatus[] = ['Active', 'In Storage', 'Under Repair', 'Retired', 'Lost/Stolen'];
+
+export type UserRole = 'admin' | 'technician' | 'viewer' | 'sandbox_user';
 
 export interface UserProfile {
   uid: string;
@@ -31,7 +21,7 @@ export interface EmailConfig {
 
 export interface AppNotification {
   id: string;
-  type: "info" | "warning" | "success" | "error";
+  type: 'info' | 'warning' | 'success' | 'error';
   title: string;
   message: string;
   timestamp: string;
@@ -42,16 +32,7 @@ export interface AppNotification {
 export interface AssetLog {
   id: string;
   assetId: string;
-  action:
-    | "Created"
-    | "Updated"
-    | "Assigned"
-    | "Returned"
-    | "Transferred"
-    | "Audit"
-    | "Ticket"
-    | "Replaced"
-    | "Retired";
+  action: 'Created' | 'Updated' | 'Assigned' | 'Returned' | 'Transferred' | 'Audit' | 'Ticket' | 'Replaced' | 'Retired';
   details: string;
   performedBy: string;
   timestamp: string;
@@ -66,8 +47,8 @@ export interface HandoverDocument {
   signatureBase64: string;
   itSignatureBase64?: string;
   date: string;
-  type: "Handover" | "Return" | "Transfer";
-  status?: "Pending" | "Completed"; // Track multi-step signing progress
+  type: 'Handover' | 'Return' | 'Transfer';
+  status?: 'Pending' | 'Completed'; // Track multi-step signing progress
 }
 
 export interface PendingHandover {
@@ -77,8 +58,8 @@ export interface PendingHandover {
   assetsSnapshot: { id: string; name: string; serialNumber: string }[];
   createdAt: string;
   createdBy: string;
-  status: "Pending" | "Completed";
-  type: "Handover" | "Return" | "Transfer";
+  status: 'Pending' | 'Completed';
+  type: 'Handover' | 'Return' | 'Transfer';
   targetName?: string;
 }
 
@@ -94,14 +75,8 @@ export interface IncidentReport {
   reportedBy: string; // Staff name
   reporterEmail?: string; // Email for updates
   description: string;
-  priority: "Low" | "Medium" | "High" | "Critical";
-  status:
-    | "New"
-    | "Open"
-    | "In Progress"
-    | "Waiting for Parts"
-    | "Resolved"
-    | "Rejected";
+  priority: 'Low' | 'Medium' | 'High' | 'Critical';
+  status: 'New' | 'Open' | 'In Progress' | 'Waiting for Parts' | 'Resolved' | 'Rejected';
   createdAt: string;
   resolvedAt?: string;
   resolutionNotes?: string;
@@ -114,15 +89,9 @@ export interface AssetRequest {
   requesterEmail?: string; // Email for updates
   department: string;
   category: string; // What they want (e.g. Laptop)
-  urgency: "Low" | "Medium" | "High";
+  urgency: 'Low' | 'Medium' | 'High';
   reason: string;
-  status:
-    | "New"
-    | "Acknowledged"
-    | "Pending Finance"
-    | "Approved"
-    | "Deployed"
-    | "Rejected";
+  status: 'New' | 'Acknowledged' | 'Pending Finance' | 'Approved' | 'Deployed' | 'Rejected';
   createdAt: string;
   resolvedAt?: string;
   resolutionNotes?: string;
@@ -161,8 +130,8 @@ export interface Task {
   id: string;
   title: string;
   description?: string;
-  status: "Pending" | "In Progress" | "Completed";
-  priority: "Low" | "Medium" | "High";
+  status: 'Pending' | 'In Progress' | 'Completed';
+  priority: 'Low' | 'Medium' | 'High';
   assignedTo?: string; // Name of IT staff
   dueDate?: string;
   createdAt: string;
@@ -191,7 +160,7 @@ export interface ProjectItem {
   category: string;
   estimatedCost: number;
   quantity?: number;
-  status: "Pending" | "Ordered" | "Received";
+  status: 'Pending' | 'Ordered' | 'Received';
   dueDate: string;
 }
 
@@ -200,6 +169,6 @@ export interface Project {
   name: string;
   description: string;
   targetDate: string;
-  status: "Planning" | "In Progress" | "Completed";
+  status: 'Planning' | 'In Progress' | 'Completed';
   items: ProjectItem[];
 }
