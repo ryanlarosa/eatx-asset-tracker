@@ -1,7 +1,36 @@
-// Fix: Refactored to use Firebase v8 namespaced API as the environment doesn't support v9 modular exports
-import firebase from "firebase/app";
-import "firebase/firestore";
-import "firebase/auth";
+// Fix: Use modular Firebase v9+ imports and ensure all required members are exported.
+import { initializeApp, getApps, getApp, deleteApp } from "firebase/app";
+import type { FirebaseApp } from "firebase/app";
+import {
+  getFirestore,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  onSnapshot,
+  query,
+  where,
+  orderBy,
+  limit,
+  writeBatch,
+} from "firebase/firestore";
+import type {
+  Firestore,
+  QuerySnapshot,
+  DocumentData,
+} from "firebase/firestore";
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+} from "firebase/auth";
+import type { Auth } from "firebase/auth";
 import {
   Asset,
   AssetLog,
@@ -35,37 +64,31 @@ const firebaseConfig = {
 };
 
 const fallbackConfig = {
-  apiKey: "PASTE_YOUR_API_KEY_HERE",
-  authDomain: "PASTE_YOUR_API_KEY_HERE",
-  projectId: "PASTE_YOUR_API_KEY_HERE",
-  storageBucket: "PASTE_YOUR_API_KEY_HERE",
-  messagingSenderId: "PASTE_YOUR_API_KEY_HERE",
-  appId: "PASTE_YOUR_API_KEY_HERE",
-  measurementId: "PASTE_YOUR_API_KEY_HERE",
+  apiKey: "AIzaSyAK1PFmG5-uawZ2-QkCExJAIj3ovr5Gc8k",
+  authDomain: "assettrack-626da.firebaseapp.com",
+  projectId: "assettrack-626da",
+  storageBucket: "assettrack-626da.firebasestorage.app",
+  messagingSenderId: "833915106836",
+  appId: "1:833915106836:web:24f97e6161f3d5ef5f9901",
+  measurementId: "G-T7N92CG779",
 };
+
 const activeConfig = firebaseConfig.apiKey ? firebaseConfig : fallbackConfig;
 
-let app: firebase.app.App;
-if (!firebase.apps.length) {
-  app = firebase.initializeApp(activeConfig);
+let app: FirebaseApp;
+if (!getApps().length) {
+  app = initializeApp(activeConfig);
 } else {
-  app = firebase.app();
+  app = getApp();
 }
 
-const db = app.firestore();
-const auth = app.auth();
+const db: Firestore = getFirestore(app);
+const auth: Auth = getAuth(app);
 
 // --- HELPERS ---
 
-const snapToData = <T>(
-  snapshot:
-    | firebase.firestore.QuerySnapshot
-    | firebase.firestore.DocumentSnapshot
-): T[] => {
-  if ("docs" in snapshot) {
-    return snapshot.docs.map((d) => d.data() as T);
-  }
-  return [];
+const snapToData = <T>(snapshot: QuerySnapshot<DocumentData>): T[] => {
+  return snapshot.docs.map((d) => ({ ...d.data(), id: d.id } as unknown as T));
 };
 
 const sanitizeData = (data: any) => {
@@ -80,8 +103,7 @@ const sanitizeData = (data: any) => {
 
 let currentUserProfile: UserProfile | null = null;
 
-const isSandbox = () => {
-  if (currentUserProfile?.role === "sandbox_user") return true;
+export const getSandboxStatus = () => {
   if (localStorage.getItem("eatx_sandbox") === "true") return true;
   if (typeof window !== "undefined") {
     if (window.location.hash.includes("env=sandbox")) return true;
@@ -89,6 +111,13 @@ const isSandbox = () => {
   }
   return false;
 };
+
+export const setSandboxMode = (enabled: boolean) => {
+  localStorage.setItem("eatx_sandbox", enabled ? "true" : "false");
+  window.location.reload();
+};
+
+const isSandbox = getSandboxStatus;
 
 const getColName = (name: string) => (isSandbox() ? `sandbox_${name}` : name);
 
@@ -130,11 +159,11 @@ const authListeners: Function[] = [];
 
 export const getCurrentUserProfile = () => currentUserProfile;
 
-auth.onAuthStateChanged(async (firebaseUser) => {
+onAuthStateChanged(auth, async (firebaseUser) => {
   if (firebaseUser) {
     try {
-      const userDoc = await db.collection("users").doc(firebaseUser.uid).get();
-      if (userDoc.exists) {
+      const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
+      if (userDoc.exists()) {
         const data = userDoc.data() as UserProfile;
         currentUserProfile = { ...data, email: firebaseUser.email || "" };
       } else {
@@ -147,7 +176,7 @@ auth.onAuthStateChanged(async (firebaseUser) => {
           role: isSuperAdmin ? "admin" : "viewer",
           displayName: firebaseUser.email?.split("@")[0],
         };
-        await db.collection("users").doc(firebaseUser.uid).set(newProfile);
+        await setDoc(doc(db, "users", firebaseUser.uid), newProfile);
         currentUserProfile = newProfile;
       }
     } catch (e) {
@@ -174,12 +203,12 @@ export const subscribeToAuth = (cb: (user: UserProfile | null) => void) => {
 };
 
 export const loginUser = async (email: string, pass: string) =>
-  auth.signInWithEmailAndPassword(email, pass);
-export const logoutUser = async () => auth.signOut();
+  signInWithEmailAndPassword(auth, email, pass);
+export const logoutUser = async () => signOut(auth);
 
 export const getAllUsers = async (): Promise<UserProfile[]> => {
-  const snap = await db.collection("users").get();
-  return snap.docs.map((d) => d.data() as UserProfile);
+  const snap = await getDocs(query(collection(db, "users")));
+  return snapToData<UserProfile>(snap);
 };
 
 export const adminCreateUser = async (
@@ -187,44 +216,46 @@ export const adminCreateUser = async (
   pass: string,
   role: UserRole
 ) => {
-  const secondaryApp = firebase.initializeApp(activeConfig, "SecondaryApp");
+  const secondaryApp = initializeApp(activeConfig, "SecondaryApp");
+  const secondaryAuth = getAuth(secondaryApp);
   try {
-    const userCred = await secondaryApp
-      .auth()
-      .createUserWithEmailAndPassword(email, pass);
-    const uid = userCred.user?.uid;
-    if (!uid) throw new Error("UID not generated");
+    const userCred = await createUserWithEmailAndPassword(
+      secondaryAuth,
+      email,
+      pass
+    );
+    const uid = userCred.user.uid;
     const newProfile: UserProfile = {
       uid,
       email: email.toLowerCase(),
       role,
       displayName: email.split("@")[0],
     };
-    await db.collection("users").doc(uid).set(newProfile);
-    await secondaryApp.auth().signOut();
+    await setDoc(doc(db, "users", uid), newProfile);
+    await signOut(secondaryAuth);
     return true;
   } finally {
-    await secondaryApp.delete();
+    await deleteApp(secondaryApp);
   }
 };
 
 export const updateUserRole = async (uid: string, role: UserRole) => {
-  await db.collection("users").doc(uid).set({ role }, { merge: true });
+  await setDoc(doc(db, "users", uid), { role }, { merge: true });
 };
 
 // --- CONFIG & EMAIL ---
 
 export const getAppConfig = async (): Promise<AppConfig> => {
   try {
-    const docRef = db.collection(getColName("settings")).doc("appConfig");
-    const snap = await docRef.get();
-    if (snap.exists) {
+    const docRef = doc(db, getColName("settings"), "appConfig");
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
       const data = snap.data() as AppConfig;
       if (!data.departments) data.departments = DEFAULT_CONFIG.departments;
       _cachedConfig = data;
       return data;
     } else {
-      await docRef.set(DEFAULT_CONFIG);
+      await setDoc(docRef, DEFAULT_CONFIG);
       _cachedConfig = DEFAULT_CONFIG;
       return DEFAULT_CONFIG;
     }
@@ -240,20 +271,20 @@ export const getCachedConfigSync = (): AppConfig =>
 
 export const saveAppConfig = async (config: AppConfig) => {
   _cachedConfig = config;
-  await db.collection(getColName("settings")).doc("appConfig").set(config);
+  await setDoc(doc(db, getColName("settings"), "appConfig"), config);
 };
 
 export const getEmailConfig = async (): Promise<EmailConfig | null> => {
   try {
-    const snap = await db.collection("settings").doc("emailConfig").get();
-    return snap.exists ? (snap.data() as EmailConfig) : null;
+    const snap = await getDoc(doc(db, "settings", "emailConfig"));
+    return snap.exists() ? (snap.data() as EmailConfig) : null;
   } catch (e) {
     return null;
   }
 };
 
 export const saveEmailConfig = async (config: EmailConfig) => {
-  await db.collection("settings").doc("emailConfig").set(config);
+  await setDoc(doc(db, "settings", "emailConfig"), config);
 };
 
 export const sendSystemEmail = async (
@@ -270,7 +301,7 @@ export const sendSystemEmail = async (
     title: subject,
     message: message,
     link: link,
-    date: new Date().toLocaleDateString(),
+    date: new Date().toLocaleString(),
   };
 
   try {
@@ -281,368 +312,413 @@ export const sendSystemEmail = async (
       config.publicKey
     );
   } catch (e) {
-    console.error("EmailJS Error:", e);
+    console.error("Email send failed", e);
   }
 };
-
-// --- NOTIFICATIONS ---
-
-export const listenToNotifications = (
-  cb: (notifications: AppNotification[]) => void
-) => {
-  return db
-    .collection(getColName("notifications"))
-    .orderBy("timestamp", "desc")
-    .limit(20)
-    .onSnapshot((snapshot) => {
-      cb(snapshot.docs.map((d) => d.data() as AppNotification));
-    });
-};
-
-export const createNotification = async (
-  type: AppNotification["type"],
-  title: string,
-  message: string,
-  link?: string
-) => {
-  try {
-    const id = "notif-" + Date.now() + Math.random().toString(36).substr(2, 5);
-    await db.collection(getColName("notifications")).doc(id).set({
-      id,
-      type,
-      title,
-      message,
-      timestamp: new Date().toISOString(),
-      read: false,
-      link,
-    });
-  } catch (e) {
-    console.error("Failed to create notification", e);
-  }
-};
-
-export const markNotificationRead = async (id: string) => {
-  await db
-    .collection(getColName("notifications"))
-    .doc(id)
-    .update({ read: true });
-};
-
-export const markAllNotificationsRead = async () => {
-  const snap = await db
-    .collection(getColName("notifications"))
-    .where("read", "==", false)
-    .get();
-  const batch = db.batch();
-  snap.forEach((d) => batch.update(d.ref, { read: true }));
-  await batch.commit();
-};
-
-// --- TASKS ---
-
-export const listenToTasks = (cb: (tasks: Task[]) => void) => {
-  return db
-    .collection(getColName("tasks"))
-    .orderBy("createdAt", "desc")
-    .onSnapshot((s) => cb(s.docs.map((d) => d.data() as Task)));
-};
-
-export const saveTask = async (task: Task) =>
-  db.collection(getColName("tasks")).doc(task.id).set(sanitizeData(task));
-
-export const deleteTask = async (id: string) =>
-  db.collection(getColName("tasks")).doc(id).delete();
 
 // --- ASSETS ---
 
-export const listenToAssets = (cb: (assets: Asset[]) => void) => {
-  return db
-    .collection(getColName("assets"))
-    .onSnapshot((s) => cb(s.docs.map((d) => d.data() as Asset)));
+export const getAssets = async (): Promise<Asset[]> => {
+  const snap = await getDocs(
+    query(collection(db, getColName("assets")), orderBy("lastUpdated", "desc"))
+  );
+  return snapToData<Asset>(snap);
 };
 
-export const getAssets = async (): Promise<Asset[]> => {
-  const snap = await db.collection(getColName("assets")).get();
-  return snap.docs.map((d) => d.data() as Asset);
+export const listenToAssets = (cb: (assets: Asset[]) => void) => {
+  return onSnapshot(
+    query(collection(db, getColName("assets")), orderBy("lastUpdated", "desc")),
+    (snap) => {
+      cb(snapToData<Asset>(snap));
+    }
+  );
 };
 
 export const saveAsset = async (asset: Asset) => {
-  const docRef = db.collection(getColName("assets")).doc(asset.id);
-  const docSnap = await docRef.get();
-  const isNew = !docSnap.exists;
-  const oldData = isNew ? null : (docSnap.data() as Asset);
-
-  const dataToSave = sanitizeData({
+  const isNew = !asset.id;
+  const assetId = asset.id || `ast-${Math.random().toString(36).substr(2, 9)}`;
+  const finalAsset = {
     ...asset,
+    id: assetId,
     lastUpdated: new Date().toISOString(),
+  };
+  await setDoc(
+    doc(db, getColName("assets"), assetId),
+    sanitizeData(finalAsset)
+  );
+
+  // Log change
+  await addDoc(collection(db, getColName("assetLogs")), {
+    assetId,
+    action: isNew ? "Created" : "Updated",
+    details: isNew
+      ? `Asset ${asset.name} onboarded.`
+      : `Asset ${asset.name} updated manually.`,
+    performedBy: currentUserProfile?.email || "System",
+    timestamp: new Date().toISOString(),
   });
-
-  await docRef.set(dataToSave);
-
-  if (isNew) {
-    await logAction(asset.id, "Created", `Asset Onboarded: ${asset.name}`);
-  } else if (oldData) {
-    if (asset.assignedEmployee !== oldData.assignedEmployee) {
-      if (asset.assignedEmployee && !oldData.assignedEmployee)
-        await logAction(
-          asset.id,
-          "Assigned",
-          `Assigned to ${asset.assignedEmployee}`
-        );
-      else if (!asset.assignedEmployee && oldData.assignedEmployee)
-        await logAction(
-          asset.id,
-          "Returned",
-          `Returned from ${oldData.assignedEmployee}`
-        );
-      else if (asset.assignedEmployee && oldData.assignedEmployee)
-        await logAction(
-          asset.id,
-          "Transferred",
-          `Transferred from ${oldData.assignedEmployee} to ${asset.assignedEmployee}`
-        );
-    } else if (asset.location !== oldData.location)
-      await logAction(
-        asset.id,
-        "Transferred",
-        `Moved from ${oldData.location} to ${asset.location}`
-      );
-
-    if (asset.status !== oldData.status) {
-      if (asset.status === "Retired")
-        await logAction(asset.id, "Retired", `Asset Retired`);
-      else if (asset.status === "Lost/Stolen")
-        await logAction(asset.id, "Updated", `Marked as Lost/Stolen`);
-    }
-  }
 };
 
 export const deleteAsset = async (id: string) => {
-  const docRef = db.collection(getColName("assets")).doc(id);
-  const snap = await docRef.get();
-  const assetName = snap.exists ? (snap.data() as Asset).name : "Unknown";
-  await docRef.delete();
-  await logAction(id, "Retired", `Asset ${assetName} deleted from registry`);
+  await deleteDoc(doc(db, getColName("assets"), id));
 };
 
-export const importAssetsBulk = async (newAssets: Asset[]) => {
-  const batch = db.batch();
-  newAssets.forEach((asset) => {
-    const dataToSave = sanitizeData(asset);
-    batch.set(db.collection(getColName("assets")).doc(asset.id), dataToSave);
+export const importAssetsBulk = async (assets: Asset[]) => {
+  const batch = writeBatch(db);
+  assets.forEach((a) => {
+    const ref = doc(db, getColName("assets"), a.id);
+    batch.set(ref, sanitizeData(a));
   });
   await batch.commit();
-  await logAction(
-    "BULK",
-    "Created",
-    `Imported ${newAssets.length} assets via Excel`
-  );
-  await createNotification(
-    "success",
-    "Bulk Import Successful",
-    `Imported ${newAssets.length} assets into the registry.`
-  );
 };
-
-// --- LOGS ---
 
 export const getAssetLogs = async (assetId: string): Promise<AssetLog[]> => {
-  const snap = await db
-    .collection(getColName("logs"))
-    .where("assetId", "==", assetId)
-    .orderBy("timestamp", "desc")
-    .get();
-  return snap.docs.map((d) => d.data() as AssetLog);
+  const q = query(
+    collection(db, getColName("assetLogs")),
+    where("assetId", "==", assetId),
+    orderBy("timestamp", "desc")
+  );
+  const snap = await getDocs(q);
+  return snapToData<AssetLog>(snap);
 };
 
-const logAction = async (
-  assetId: string,
-  action: AssetLog["action"],
-  details: string,
-  documentId?: string,
-  ticketId?: string
+export const bulkAssignAssets = async (
+  assetIds: string[],
+  employeeName: string,
+  docId: string
 ) => {
-  try {
-    await db.collection(getColName("logs")).add({
-      assetId,
-      action,
-      details,
-      performedBy: currentUserProfile?.email || "System",
-      timestamp: new Date().toISOString(),
-      documentId: documentId || null,
-      ticketId: ticketId || null,
+  const batch = writeBatch(db);
+  const timestamp = new Date().toISOString();
+  assetIds.forEach((id) => {
+    const ref = doc(db, getColName("assets"), id);
+    batch.update(ref, {
+      assignedEmployee: employeeName,
+      status: "Active",
+      lastUpdated: timestamp,
     });
-  } catch (e) {
-    console.error("Failed to log action", e);
-  }
+
+    const logRef = doc(collection(db, getColName("assetLogs")));
+    batch.set(logRef, {
+      assetId: id,
+      action: "Assigned",
+      details: `Asset assigned to ${employeeName}. Handover Doc: ${docId}`,
+      performedBy: currentUserProfile?.email || "System",
+      timestamp,
+      documentId: docId,
+    });
+  });
+  await batch.commit();
 };
 
-// --- STATS ---
+export const bulkReturnAssets = async (assetIds: string[], docId: string) => {
+  const batch = writeBatch(db);
+  const timestamp = new Date().toISOString();
+  assetIds.forEach((id) => {
+    const ref = doc(db, getColName("assets"), id);
+    batch.update(ref, {
+      assignedEmployee: "",
+      status: "In Storage",
+      lastUpdated: timestamp,
+    });
 
-export const getStats = (assets: Asset[]): AssetStats => {
-  const config = getCachedConfigSync();
-  const categoryCounts = config.categories
-    .map((cat) => ({
-      name: cat,
-      value: assets.filter((a) => a.category === cat).length,
-    }))
-    .filter((c) => c.value > 0);
+    const logRef = doc(collection(db, getColName("assetLogs")));
+    batch.set(logRef, {
+      assetId: id,
+      action: "Returned",
+      details: `Asset returned to storage. Return Doc: ${docId}`,
+      performedBy: currentUserProfile?.email || "System",
+      timestamp,
+      documentId: docId,
+    });
+  });
+  await batch.commit();
+};
 
-  const knownCategories = new Set(config.categories);
-  const otherCount = assets.filter(
-    (a) => !knownCategories.has(a.category)
-  ).length;
-  if (otherCount > 0) categoryCounts.push({ name: "Other", value: otherCount });
+export const bulkTransferAssets = async (
+  assetIds: string[],
+  targetName: string,
+  docId: string
+) => {
+  const batch = writeBatch(db);
+  const timestamp = new Date().toISOString();
+  assetIds.forEach((id) => {
+    const ref = doc(db, getColName("assets"), id);
+    batch.update(ref, {
+      assignedEmployee: targetName,
+      lastUpdated: timestamp,
+    });
 
-  return {
-    totalValue: assets.reduce((sum, a) => sum + (a.purchaseCost || 0), 0),
-    totalAssets: assets.length,
-    activeAssets: assets.filter((a) => a.status === "Active").length,
-    repairAssets: assets.filter((a) => a.status === "Under Repair").length,
-    byCategory: categoryCounts,
-  };
+    const logRef = doc(collection(db, getColName("assetLogs")));
+    batch.set(logRef, {
+      assetId: id,
+      action: "Transferred",
+      details: `Asset transferred to ${targetName}. Transfer Doc: ${docId}`,
+      performedBy: currentUserProfile?.email || "System",
+      timestamp,
+      documentId: docId,
+    });
+  });
+  await batch.commit();
 };
 
 // --- PROJECTS ---
 
 export const listenToProjects = (cb: (projects: Project[]) => void) => {
-  return db
-    .collection(getColName("projects"))
-    .onSnapshot((s) => cb(s.docs.map((d) => d.data() as Project)));
+  return onSnapshot(
+    query(collection(db, getColName("projects")), orderBy("targetDate", "asc")),
+    (snap) => {
+      cb(snapToData<Project>(snap));
+    }
+  );
 };
 
 export const saveProject = async (project: Project) => {
-  const dataToSave = sanitizeData(project);
-  return db.collection(getColName("projects")).doc(project.id).set(dataToSave);
+  await setDoc(
+    doc(db, getColName("projects"), project.id),
+    sanitizeData(project)
+  );
 };
 
-export const deleteProject = async (id: string) =>
-  db.collection(getColName("projects")).doc(id).delete();
+export const deleteProject = async (id: string) => {
+  await deleteDoc(doc(db, getColName("projects"), id));
+};
 
 export const getOverdueItems = async (
   projects: Project[]
 ): Promise<ProjectItem[]> => {
-  const today = new Date().toISOString().split("T")[0];
   const overdue: ProjectItem[] = [];
+  const now = new Date();
   projects.forEach((p) => {
-    if (p.status !== "Completed") {
-      p.items.forEach((i) => {
-        if (i.status !== "Received" && i.dueDate && i.dueDate < today)
-          overdue.push(i);
-      });
-    }
+    p.items.forEach((i) => {
+      if (i.status !== "Received" && i.dueDate && new Date(i.dueDate) < now) {
+        overdue.push(i);
+      }
+    });
   });
   return overdue;
 };
 
-// --- INCIDENTS ---
+// --- DASHBOARD ---
 
-export const listenToIncidents = (
-  cb: (incidents: IncidentReport[]) => void
-) => {
-  return db
-    .collection(getColName("incidents"))
-    .onSnapshot((s) => cb(s.docs.map((d) => d.data() as IncidentReport)));
+export const getStats = (assets: Asset[]): AssetStats => {
+  const stats: AssetStats = {
+    totalValue: 0,
+    totalAssets: assets.length,
+    activeAssets: 0,
+    repairAssets: 0,
+    byCategory: [],
+  };
+
+  const catMap = new Map<string, number>();
+
+  assets.forEach((a) => {
+    const cost = a.purchaseCost || 0;
+    stats.totalValue += cost;
+    if (a.status === "Active") stats.activeAssets++;
+    if (a.status === "Under Repair") stats.repairAssets++;
+
+    catMap.set(a.category, (catMap.get(a.category) || 0) + cost);
+  });
+
+  stats.byCategory = Array.from(catMap.entries()).map(([name, value]) => ({
+    name,
+    value,
+  }));
+
+  return stats;
 };
 
-export const createIncidentReport = async (
-  data: Omit<IncidentReport, "id" | "ticketNumber" | "status" | "createdAt">
+// --- NOTIFICATIONS ---
+
+export const listenToNotifications = (
+  cb: (notifs: AppNotification[]) => void
 ) => {
-  const id = "inc-" + Date.now();
+  return onSnapshot(
+    query(
+      collection(db, getColName("notifications")),
+      orderBy("timestamp", "desc"),
+      limit(50)
+    ),
+    (snap) => {
+      cb(snapToData<AppNotification>(snap));
+    }
+  );
+};
+
+export const markNotificationRead = async (id: string) => {
+  await updateDoc(doc(db, getColName("notifications"), id), { read: true });
+};
+
+export const markAllNotificationsRead = async () => {
+  const snap = await getDocs(
+    query(
+      collection(db, getColName("notifications")),
+      where("read", "==", false)
+    )
+  );
+  const batch = writeBatch(db);
+  snap.docs.forEach((d) => batch.update(d.ref, { read: true }));
+  await batch.commit();
+};
+
+// --- REQUESTS ---
+
+export const listenToRequests = (cb: (reqs: AssetRequest[]) => void) => {
+  return onSnapshot(
+    query(
+      collection(db, getColName("assetRequests")),
+      orderBy("createdAt", "desc")
+    ),
+    (snap) => {
+      cb(snapToData<AssetRequest>(snap));
+    }
+  );
+};
+
+export const createAssetRequest = async (req: Partial<AssetRequest>) => {
+  const requestNumber = `REQ-${new Date().getFullYear()}-${Math.floor(
+    1000 + Math.random() * 9000
+  )}`;
+  const newReq = {
+    ...req,
+    requestNumber,
+    status: "New",
+    createdAt: new Date().toISOString(),
+  };
+  await addDoc(
+    collection(db, getColName("assetRequests")),
+    sanitizeData(newReq)
+  );
+
+  // Notify
+  await addDoc(collection(db, getColName("notifications")), {
+    type: "info",
+    title: "New Asset Request",
+    message: `${req.requesterName} requested a ${req.category} for ${req.department}.`,
+    timestamp: new Date().toISOString(),
+    read: false,
+    link: "/requests",
+  });
+
+  await sendSystemEmail(
+    "New Asset Request",
+    `${req.requesterName} has submitted a new request for ${req.category}.`,
+    window.location.origin + "/#/requests"
+  );
+};
+
+export const updateAssetRequest = async (
+  id: string,
+  updates: Partial<AssetRequest>
+) => {
+  await updateDoc(
+    doc(db, getColName("assetRequests"), id),
+    sanitizeData(updates)
+  );
+};
+
+export const fulfillAssetRequest = async (
+  requestId: string,
+  assetId: string,
+  notes: string,
+  employeeName: string
+) => {
+  const batch = writeBatch(db);
+  const timestamp = new Date().toISOString();
+
+  // Update Request
+  batch.update(doc(db, getColName("assetRequests"), requestId), {
+    status: "Deployed",
+    linkedAssetId: assetId,
+    resolutionNotes: notes,
+    resolvedAt: timestamp,
+  });
+
+  // Update Asset
+  batch.update(doc(db, getColName("assets"), assetId), {
+    status: "Active",
+    assignedEmployee: employeeName,
+    lastUpdated: timestamp,
+  });
+
+  // Log Asset
+  const logRef = doc(collection(db, getColName("assetLogs")));
+  batch.set(logRef, {
+    assetId,
+    action: "Assigned",
+    details: `Assigned to ${employeeName} via Request fulfillment.`,
+    performedBy: currentUserProfile?.email || "System",
+    timestamp,
+  });
+
+  await batch.commit();
+};
+
+// --- INCIDENTS ---
+
+export const listenToIncidents = (cb: (tickets: IncidentReport[]) => void) => {
+  return onSnapshot(
+    query(
+      collection(db, getColName("incidentReports")),
+      orderBy("createdAt", "desc")
+    ),
+    (snap) => {
+      cb(snapToData<IncidentReport>(snap));
+    }
+  );
+};
+
+export const createIncidentReport = async (report: Partial<IncidentReport>) => {
   const ticketNumber = `TKT-${new Date().getFullYear()}-${Math.floor(
     1000 + Math.random() * 9000
   )}`;
-  const report: IncidentReport = {
-    ...data,
-    id,
+  const newReport = {
+    ...report,
     ticketNumber,
     status: "New",
     createdAt: new Date().toISOString(),
   };
-
-  await db
-    .collection(getColName("incidents"))
-    .doc(id)
-    .set(sanitizeData(report));
-
-  if (data.assetId) {
-    await db.collection(getColName("assets")).doc(data.assetId).update({
-      status: "Under Repair",
-      lastUpdated: new Date().toISOString(),
-    });
-    await logAction(
-      data.assetId,
-      "Ticket",
-      `Ticket ${ticketNumber} created: ${data.description}`,
-      undefined,
-      report.id
-    );
-  }
-
-  const msg = `${data.priority} priority issue reported at ${data.location}: ${data.description}`;
-  await createNotification(
-    "error",
-    `New Ticket ${ticketNumber}`,
-    msg,
-    "/repairs"
+  await addDoc(
+    collection(db, getColName("incidentReports")),
+    sanitizeData(newReport)
   );
+
+  // Notify
+  await addDoc(collection(db, getColName("notifications")), {
+    type: "warning",
+    title: "New Incident Reported",
+    message: `${report.reportedBy} reported an issue at ${report.location}.`,
+    timestamp: new Date().toISOString(),
+    read: false,
+    link: "/repairs",
+  });
+
   await sendSystemEmail(
-    `New Ticket: ${ticketNumber}`,
-    msg,
-    `${window.location.origin}/#/repairs`
+    "New Incident Report",
+    `${report.reportedBy} reported: ${report.description}`,
+    window.location.origin + "/#/repairs"
   );
 };
 
 export const updateIncidentReport = async (
   id: string,
   updates: Partial<IncidentReport>,
-  autoFixAsset: boolean = false
+  updateAssetStatus: boolean = false
 ) => {
-  const ref = db.collection(getColName("incidents")).doc(id);
-  const snap = await ref.get();
-  if (!snap.exists) return;
-  const incident = snap.data() as IncidentReport;
+  await updateDoc(
+    doc(db, getColName("incidentReports"), id),
+    sanitizeData(updates)
+  );
 
-  await ref.update(sanitizeData(updates));
-
-  if (incident.assetId) {
-    if (
-      ["Open", "In Progress", "Waiting for Parts"].includes(
-        updates.status || ""
-      )
-    ) {
-      await db
-        .collection(getColName("assets"))
-        .doc(incident.assetId)
-        .update({ status: "Under Repair" });
-    } else if (updates.status === "Resolved" && autoFixAsset) {
-      await db
-        .collection(getColName("assets"))
-        .doc(incident.assetId)
-        .update({ status: "Active" });
+  if (updateAssetStatus && updates.status === "Resolved") {
+    const snap = await getDoc(doc(db, getColName("incidentReports"), id));
+    const data = snap.data() as IncidentReport;
+    if (data.assetId) {
+      await updateDoc(doc(db, getColName("assets"), data.assetId), {
+        status: "Active",
+        lastUpdated: new Date().toISOString(),
+      });
     }
-    if (updates.status)
-      await logAction(
-        incident.assetId,
-        "Ticket",
-        `Ticket ${incident.ticketNumber} updated to ${updates.status}`
-      );
-  }
-
-  if (
-    updates.status &&
-    incident.reporterEmail &&
-    updates.status !== incident.status
-  ) {
-    const msg = `Your ticket for "${incident.assetName}" has been updated to: ${
-      updates.status
-    }.\n\nResolution Notes: ${updates.resolutionNotes || "N/A"}`;
-    await sendSystemEmail(
-      `Update on Ticket ${incident.ticketNumber}`,
-      msg,
-      "",
-      incident.reporterEmail
-    );
   }
 };
 
@@ -652,466 +728,312 @@ export const processAssetReplacement = async (
   newAssetId: string,
   notes: string
 ) => {
-  const incidentRef = db.collection(getColName("incidents")).doc(ticketId);
-  const incidentSnap = await incidentRef.get();
-  const incident = incidentSnap.data() as IncidentReport;
+  const batch = writeBatch(db);
+  const timestamp = new Date().toISOString();
 
-  const batch = db.batch();
-  batch.update(db.collection(getColName("assets")).doc(oldAssetId), {
+  // 1. Retire old asset
+  batch.update(doc(db, getColName("assets"), oldAssetId), {
     status: "Retired",
+    lastUpdated: timestamp,
     assignedEmployee: "",
-    lastUpdated: new Date().toISOString(),
   });
-  batch.update(db.collection(getColName("assets")).doc(newAssetId), {
+
+  // 2. Assign new asset
+  const ticketSnap = await getDoc(
+    doc(db, getColName("incidentReports"), ticketId)
+  );
+  const ticketData = ticketSnap.data() as IncidentReport;
+
+  batch.update(doc(db, getColName("assets"), newAssetId), {
     status: "Active",
-    location: incident.location,
-    lastUpdated: new Date().toISOString(),
+    location: ticketData.location,
+    assignedEmployee: ticketData.reportedBy || "",
+    lastUpdated: timestamp,
   });
-  batch.update(incidentRef, {
+
+  // 3. Resolve ticket
+  batch.update(doc(db, getColName("incidentReports"), ticketId), {
     status: "Resolved",
-    resolvedAt: new Date().toISOString(),
-    resolutionNotes: `Asset Replaced. New Asset ID: ${newAssetId}. ${notes}`,
+    resolvedAt: timestamp,
+    resolutionNotes: `Replaced with Asset ID: ${newAssetId}. ${notes}`,
   });
+
+  // Logs
+  const log1 = doc(collection(db, getColName("assetLogs")));
+  batch.set(log1, {
+    assetId: oldAssetId,
+    action: "Retired",
+    details: "Retired due to replacement in ticket " + ticketData.ticketNumber,
+    performedBy: currentUserProfile?.email || "System",
+    timestamp,
+  });
+
+  const log2 = doc(collection(db, getColName("assetLogs")));
+  batch.set(log2, {
+    assetId: newAssetId,
+    action: "Replaced",
+    details:
+      "Replacement for " + oldAssetId + " in ticket " + ticketData.ticketNumber,
+    performedBy: currentUserProfile?.email || "System",
+    timestamp,
+  });
+
   await batch.commit();
+};
 
-  await logAction(
-    oldAssetId,
-    "Retired",
-    `Replaced by ${newAssetId}. Notes: ${notes}`,
-    undefined,
-    ticketId
+// --- INVOICES ---
+
+export const listenToInvoices = (cb: (invoices: Invoice[]) => void) => {
+  return onSnapshot(
+    query(collection(db, getColName("invoices")), orderBy("date", "desc")),
+    (snap) => {
+      cb(snapToData<Invoice>(snap));
+    }
   );
-  await logAction(
-    newAssetId,
-    "Replaced",
-    `Replacement for ${oldAssetId}. Ticket ${incident.ticketNumber}`,
-    undefined,
-    ticketId
+};
+
+export const saveInvoice = async (invoice: Invoice) => {
+  await setDoc(
+    doc(db, getColName("invoices"), invoice.id),
+    sanitizeData(invoice)
   );
-
-  await createNotification(
-    "info",
-    "Asset Replaced",
-    `Ticket ${incident.ticketNumber} resolved via replacement.`,
-    "/repairs"
-  );
-  if (incident.reporterEmail)
-    await sendSystemEmail(
-      `Ticket ${incident.ticketNumber} Resolved`,
-      `Your issue has been resolved. The device was replaced.`,
-      "",
-      incident.reporterEmail
-    );
 };
 
-// --- REQUESTS ---
-
-export const listenToRequests = (cb: (reqs: AssetRequest[]) => void) => {
-  return db
-    .collection(getColName("requests"))
-    .onSnapshot((s) => cb(s.docs.map((d) => d.data() as AssetRequest)));
+export const deleteInvoice = async (id: string) => {
+  await deleteDoc(doc(db, getColName("invoices"), id));
 };
 
-export const createAssetRequest = async (
-  data: Omit<AssetRequest, "id" | "requestNumber" | "status" | "createdAt">
-) => {
-  const id = "req-" + Date.now() + Math.random().toString(36).substr(2, 5);
-  const requestNumber = `REQ-${new Date().getFullYear()}-${Math.floor(
-    1000 + Math.random() * 9000
-  )}`;
-  const req: AssetRequest = {
-    ...data,
-    id,
-    requestNumber,
-    status: "New",
-    createdAt: new Date().toISOString(),
-  };
-  await db.collection(getColName("requests")).doc(id).set(sanitizeData(req));
-
-  const msg = `${data.requesterName} requested ${data.category}. Urgency: ${data.urgency}`;
-  await createNotification("info", "New Asset Request", msg, "/requests");
-  await sendSystemEmail(
-    `New Asset Request: ${requestNumber}`,
-    msg,
-    `${window.location.origin}/#/requests`
-  );
-  if (data.requesterEmail)
-    await sendSystemEmail(
-      `Request Received: ${requestNumber}`,
-      `We have received your request for ${data.category}.`,
-      "",
-      data.requesterEmail
-    );
-};
-
-export const updateAssetRequest = async (
-  id: string,
-  updates: Partial<AssetRequest>
-) => {
-  const ref = db.collection(getColName("requests")).doc(id);
-  await ref.update(sanitizeData(updates));
-
-  const snap = await ref.get();
-  const req = snap.data() as AssetRequest;
-  if (updates.status && req.requesterEmail && updates.status !== req.status) {
-    await sendSystemEmail(
-      `Request Update: ${req.requestNumber}`,
-      `Your request for ${req.category} is now: ${updates.status}.\n\nNotes: ${
-        updates.resolutionNotes || "N/A"
-      }`,
-      "",
-      req.requesterEmail
-    );
-  }
-};
-
-export const fulfillAssetRequest = async (
-  id: string,
-  assetId: string,
-  notes: string,
-  assignedTo: string
-) => {
-  const reqRef = db.collection(getColName("requests")).doc(id);
-  const snap = await reqRef.get();
-  const req = snap.data() as AssetRequest;
-
-  await db.collection(getColName("assets")).doc(assetId).update({
-    status: "Active",
-    assignedEmployee: assignedTo,
-    department: req.department,
-    lastUpdated: new Date().toISOString(),
-  });
-  await logAction(
-    assetId,
-    "Assigned",
-    `Fulfilled Request ${req.requestNumber} for ${assignedTo}`
-  );
-
-  await reqRef.update({
-    status: "Deployed",
-    resolvedAt: new Date().toISOString(),
-    linkedAssetId: assetId,
-    resolutionNotes: notes,
-  });
-
-  if (req.requesterEmail)
-    await sendSystemEmail(
-      `Request Fulfilled: ${req.requestNumber}`,
-      `Good news! Your request for ${req.category} has been fulfilled and the asset has been deployed to ${assignedTo}.`,
-      "",
-      req.requesterEmail
-    );
-};
-
-// --- PUBLIC TRACKING ---
-
-export interface PublicStatusResult {
-  type: "Ticket" | "Request";
-  id: string;
-  status: string;
-  created: string;
-  subject: string;
-  details: string;
-  notes?: string;
-  updated?: string;
-}
-
-export const getPublicItemStatus = async (
-  refId: string
-): Promise<PublicStatusResult | null> => {
-  const cleanId = refId.trim().toUpperCase();
-
-  const incSnap = await db
-    .collection(getColName("incidents"))
-    .where("ticketNumber", "==", cleanId)
-    .get();
-  if (!incSnap.empty) {
-    const data = incSnap.docs[0].data() as IncidentReport;
-    return {
-      type: "Ticket",
-      id: data.ticketNumber,
-      status: data.status,
-      created: data.createdAt,
-      subject: data.assetName,
-      details: data.description,
-      notes: data.resolutionNotes,
-      updated: data.resolvedAt,
-    };
-  }
-
-  const reqSnap = await db
-    .collection(getColName("requests"))
-    .where("requestNumber", "==", cleanId)
-    .get();
-  if (!reqSnap.empty) {
-    const data = reqSnap.docs[0].data() as AssetRequest;
-    return {
-      type: "Request",
-      id: data.requestNumber,
-      status: data.status,
-      created: data.createdAt,
-      subject: data.category,
-      details: data.reason,
-      notes: data.resolutionNotes,
-      updated: data.resolvedAt,
-    };
-  }
-  return null;
-};
-
-// --- INVOICES & HANDOVERS ---
-
-export const listenToInvoices = (cb: (inv: Invoice[]) => void) => {
-  return db
-    .collection(getColName("invoices"))
-    .onSnapshot((s) => cb(s.docs.map((d) => d.data() as Invoice)));
-};
-export const saveInvoice = async (invoice: Invoice) =>
-  db
-    .collection(getColName("invoices"))
-    .doc(invoice.id)
-    .set(sanitizeData(invoice));
-export const deleteInvoice = async (id: string) =>
-  db.collection(getColName("invoices")).doc(id).delete();
+// --- HANDOVER & SIGNING ---
 
 export const getHandoverDocuments = async (): Promise<HandoverDocument[]> => {
-  const snap = await db.collection(getColName("documents")).get();
-  return snap.docs.map((d) => d.data() as HandoverDocument);
+  const snap = await getDocs(
+    query(collection(db, getColName("handoverDocs")), orderBy("date", "desc"))
+  );
+  return snapToData<HandoverDocument>(snap);
 };
-export const saveHandoverDocument = async (docData: HandoverDocument) =>
-  db
-    .collection(getColName("documents"))
-    .doc(docData.id)
-    .set(sanitizeData(docData));
 
-export const createPendingHandover = async (
-  employeeName: string,
-  assets: Asset[],
-  type: "Handover" | "Return" | "Transfer" = "Handover",
-  targetName?: string
-): Promise<string> => {
-  const id = "ph-" + Date.now();
-  await db
-    .collection(getColName("pendingHandovers"))
-    .doc(id)
-    .set(
-      sanitizeData({
-        id,
-        employeeName,
-        assetIds: assets.map((a) => a.id),
-        assetsSnapshot: assets.map((a) => ({
-          id: a.id,
-          name: a.name,
-          serialNumber: a.serialNumber,
-        })),
-        createdAt: new Date().toISOString(),
-        createdBy: currentUserProfile?.email || "System",
-        status: "Pending",
-        type,
-        targetName,
-      } as PendingHandover)
-    );
-  return id;
+export const saveHandoverDocument = async (docData: HandoverDocument) => {
+  await setDoc(
+    doc(db, getColName("handoverDocs"), docData.id),
+    sanitizeData(docData)
+  );
 };
 
 export const listenToPendingHandovers = (
   cb: (pending: PendingHandover[]) => void
 ) => {
-  return db
-    .collection(getColName("pendingHandovers"))
-    .where("status", "==", "Pending")
-    .onSnapshot((s) => cb(s.docs.map((d) => d.data() as PendingHandover)));
+  return onSnapshot(
+    query(
+      collection(db, getColName("pendingHandovers")),
+      orderBy("createdAt", "desc")
+    ),
+    (snap) => {
+      cb(snapToData<PendingHandover>(snap));
+    }
+  );
 };
 
-export const deletePendingHandover = async (id: string) =>
-  db.collection(getColName("pendingHandovers")).doc(id).delete();
+export const createPendingHandover = async (
+  employeeName: string,
+  assets: Asset[],
+  type: "Handover" | "Return"
+) => {
+  const id = `pending-${Math.random().toString(36).substr(2, 9)}`;
+  const pending: PendingHandover = {
+    id,
+    employeeName,
+    assetIds: assets.map((a) => a.id),
+    assetsSnapshot: assets.map((a) => ({
+      id: a.id,
+      name: a.name,
+      serialNumber: a.serialNumber,
+    })),
+    createdAt: new Date().toISOString(),
+    createdBy: currentUserProfile?.email || "System",
+    status: "Pending",
+    type,
+  };
+  await setDoc(doc(db, getColName("pendingHandovers"), id), pending);
+  return id;
+};
 
 export const getPendingHandover = async (
   id: string
-): Promise<PendingHandover | undefined> => {
-  const snap = await db
-    .collection(getColName("pendingHandovers"))
-    .doc(id)
-    .get();
-  return snap.exists ? (snap.data() as PendingHandover) : undefined;
+): Promise<PendingHandover | null> => {
+  const snap = await getDoc(doc(db, getColName("pendingHandovers"), id));
+  return snap.exists() ? (snap.data() as PendingHandover) : null;
+};
+
+export const deletePendingHandover = async (id: string) => {
+  await deleteDoc(doc(db, getColName("pendingHandovers"), id));
 };
 
 export const completePendingHandover = async (
   id: string,
   signature: string
 ) => {
-  const ref = db.collection(getColName("pendingHandovers")).doc(id);
-  const snap = await ref.get();
-  const pending = snap.data() as PendingHandover;
-  if (pending.status !== "Pending") throw new Error("Already completed");
+  const snap = await getDoc(doc(db, getColName("pendingHandovers"), id));
+  if (!snap.exists()) throw new Error("Link not found");
+  const data = snap.data() as PendingHandover;
 
-  const docId = "doc-" + Date.now();
-  const handoverType = pending.type || "Handover";
+  const docId = `doc-${Math.random().toString(36).substr(2, 9)}`;
+  const handoverDoc: HandoverDocument = {
+    id: docId,
+    employeeName: data.employeeName,
+    assets: data.assetsSnapshot,
+    signatureBase64: signature,
+    date: new Date().toISOString(),
+    type: data.type,
+    status: data.type === "Return" ? "Pending" : "Completed",
+  };
 
-  // Process according to type
-  if (handoverType === "Return") {
-    // Returns still require IT verification (Pending)
-    await saveHandoverDocument({
-      id: docId,
-      employeeName: pending.employeeName,
-      assets: pending.assetsSnapshot,
-      signatureBase64: signature,
-      date: new Date().toISOString(),
-      type: handoverType,
-      status: "Pending",
-    });
-  } else {
-    // Handovers and Transfers are processed immediately (Completed)
-    await saveHandoverDocument({
-      id: docId,
-      employeeName: pending.employeeName,
-      assets: pending.assetsSnapshot,
-      signatureBase64: signature,
-      date: new Date().toISOString(),
-      type: handoverType,
-      status: "Completed",
-    });
+  await saveHandoverDocument(handoverDoc);
 
-    if (handoverType === "Transfer" && pending.targetName) {
-      await bulkTransferAssets(pending.assetIds, pending.targetName, docId);
-    } else {
-      await bulkAssignAssets(pending.assetIds, pending.employeeName, docId);
-    }
+  if (data.type === "Handover") {
+    await bulkAssignAssets(data.assetIds, data.employeeName, docId);
+  } else if (data.type === "Return") {
+    // Return documents stay pending until IT verifies in StaffView
   }
 
-  await ref.update({ status: "Completed" });
-
-  const msg =
-    handoverType === "Return"
-      ? `${pending.employeeName} has provided their return signature. IT Manager verification required.`
-      : `${pending.employeeName} has digitally signed for ${pending.assetsSnapshot.length} assets. Request finalized.`;
-
-  await createNotification(
-    handoverType === "Return" ? "info" : "success",
-    "Signature Received",
-    msg,
-    "/staff"
-  );
-  await sendSystemEmail(
-    "Signature Received",
-    msg,
-    `${window.location.origin}/#/staff`
-  );
+  await updateDoc(doc(db, getColName("pendingHandovers"), id), {
+    status: "Completed",
+  });
 };
 
-// --- BULK OPS ---
+// --- PUBLIC TRACKING ---
 
-const performBulkOp = async (
-  assetIds: string[],
-  updateObj: object,
-  logActionFn: (id: string) => Promise<void>
-) => {
-  const batch = db.batch();
-  assetIds.forEach((id) =>
-    batch.update(db.collection(getColName("assets")).doc(id), updateObj)
+export interface PublicStatusResult {
+  id: string;
+  type: "Request" | "Ticket";
+  status: string;
+  subject: string;
+  details: string;
+  created: string;
+  updated?: string;
+  notes?: string;
+}
+
+export const getPublicItemStatus = async (
+  refId: string
+): Promise<PublicStatusResult | null> => {
+  // Try Tickets
+  const ticketSnap = await getDocs(
+    query(
+      collection(db, getColName("incidentReports")),
+      where("ticketNumber", "==", refId)
+    )
   );
-  await batch.commit();
-  for (const id of assetIds) await logActionFn(id);
-};
+  if (!ticketSnap.empty) {
+    const d = ticketSnap.docs[0].data() as IncidentReport;
+    return {
+      id: d.ticketNumber,
+      type: "Ticket",
+      status: d.status,
+      subject: d.assetName,
+      details: d.description,
+      created: d.createdAt,
+      updated: d.resolvedAt,
+      notes: d.resolutionNotes,
+    };
+  }
 
-export const bulkAssignAssets = async (
-  assetIds: string[],
-  employeeName: string,
-  docId?: string
-) => {
-  await performBulkOp(
-    assetIds,
-    {
-      assignedEmployee: employeeName,
-      status: "Active",
-      lastUpdated: new Date().toISOString(),
-    },
-    (id) => logAction(id, "Assigned", `Assigned to ${employeeName}`, docId)
+  // Try Requests
+  const reqSnap = await getDocs(
+    query(
+      collection(db, getColName("assetRequests")),
+      where("requestNumber", "==", refId)
+    )
   );
+  if (!reqSnap.empty) {
+    const d = reqSnap.docs[0].data() as AssetRequest;
+    return {
+      id: d.requestNumber,
+      type: "Request",
+      status: d.status,
+      subject: d.category,
+      details: d.reason,
+      created: d.createdAt,
+      updated: d.resolvedAt,
+      notes: d.resolutionNotes,
+    };
+  }
+
+  return null;
 };
 
-export const bulkReturnAssets = async (assetIds: string[], docId?: string) => {
-  await performBulkOp(
-    assetIds,
-    {
-      assignedEmployee: "",
-      status: "In Storage",
-      lastUpdated: new Date().toISOString(),
-    },
-    (id) => logAction(id, "Returned", `Returned to storage`, docId)
-  );
-};
-
-export const bulkTransferAssets = async (
-  assetIds: string[],
-  targetName: string,
-  docId?: string
-) => {
-  await performBulkOp(
-    assetIds,
-    { assignedEmployee: targetName, lastUpdated: new Date().toISOString() },
-    (id) => logAction(id, "Transferred", `Transferred to ${targetName}`, docId)
-  );
-};
-
-// --- SYSTEM ADMIN ---
-
-export const getSandboxStatus = () => isSandbox();
-export const setSandboxMode = (enabled: boolean) => {
-  localStorage.setItem("eatx_sandbox", enabled ? "true" : "false");
-  window.location.reload();
-};
+// --- DANGER ZONE ---
 
 export const resetDatabase = async () => {
   const collections = [
     "assets",
-    "logs",
+    "assetLogs",
     "projects",
-    "incidents",
-    "requests",
+    "incidentReports",
+    "assetRequests",
     "invoices",
-    "documents",
+    "handoverDocs",
     "pendingHandovers",
     "notifications",
     "tasks",
   ];
-  const prefix = isSandbox() ? "sandbox_" : "";
+  const batch = writeBatch(db);
 
   for (const colName of collections) {
-    const snap = await db.collection(prefix + colName).get();
-    const batch = db.batch();
+    const snap = await getDocs(collection(db, getColName(colName)));
     snap.docs.forEach((d) => batch.delete(d.ref));
-    await batch.commit();
   }
-  window.location.reload();
+
+  await batch.commit();
 };
 
 export const renameMasterDataItem = async (
   type: "category" | "location" | "department",
-  oldValue: string,
-  newValue: string
+  oldVal: string,
+  newVal: string
 ) => {
+  const assetsSnap = await getDocs(
+    query(collection(db, getColName("assets")), where(type, "==", oldVal))
+  );
+  const batch = writeBatch(db);
+  assetsSnap.docs.forEach((d) => {
+    batch.update(d.ref, {
+      [type]: newVal,
+      lastUpdated: new Date().toISOString(),
+    });
+  });
+
+  // Update Config
   const config = await getAppConfig();
   if (type === "category")
     config.categories = config.categories.map((c) =>
-      c === oldValue ? newValue : c
+      c === oldVal ? newVal : c
     );
-  else if (type === "location")
-    config.locations = config.locations.map((l) =>
-      l === oldValue ? newValue : l
-    );
-  else if (type === "department")
+  if (type === "location")
+    config.locations = config.locations.map((l) => (l === oldVal ? newVal : l));
+  if (type === "department")
     config.departments = (config.departments || []).map((d) =>
-      d === oldValue ? newValue : d
+      d === oldVal ? newVal : d
     );
 
-  await saveAppConfig(config);
-
-  const snapshot = await db
-    .collection(getColName("assets"))
-    .where(type, "==", oldValue)
-    .get();
-  const batch = db.batch();
-  snapshot.docs.forEach((doc) => batch.update(doc.ref, { [type]: newValue }));
+  batch.set(doc(db, getColName("settings"), "appConfig"), config);
   await batch.commit();
+};
+
+// --- TASKS ---
+
+export const listenToTasks = (cb: (tasks: Task[]) => void) => {
+  return onSnapshot(
+    query(collection(db, getColName("tasks")), orderBy("createdAt", "desc")),
+    (snap) => {
+      cb(snapToData<Task>(snap));
+    }
+  );
+};
+
+export const saveTask = async (task: Task) => {
+  await setDoc(doc(db, getColName("tasks"), task.id), sanitizeData(task));
+};
+
+export const deleteTask = async (id: string) => {
+  await deleteDoc(doc(db, getColName("tasks"), id));
 };
