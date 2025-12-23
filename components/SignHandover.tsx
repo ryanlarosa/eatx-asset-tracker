@@ -54,12 +54,10 @@ const SignHandover: React.FC = () => {
     load();
   }, [id]);
 
-  // Robust Canvas Sizing Logic
   const resizeCanvas = () => {
     if (canvasRef.current && containerRef.current) {
       const canvas = canvasRef.current;
       const rect = canvas.getBoundingClientRect();
-      // Sync the internal buffer to the actual display size
       canvas.width = rect.width;
       canvas.height = rect.height;
 
@@ -75,9 +73,7 @@ const SignHandover: React.FC = () => {
 
   useEffect(() => {
     if (!loading && pending) {
-      // Initial resize
       resizeCanvas();
-      // Watch for container size changes
       const observer = new ResizeObserver(resizeCanvas);
       if (containerRef.current) observer.observe(containerRef.current);
       return () => observer.disconnect();
@@ -98,7 +94,6 @@ const SignHandover: React.FC = () => {
       clientY = e.clientY;
     }
 
-    // Calculate position relative to the element, matching the scale of the buffer
     return {
       x: (clientX - rect.left) * (canvas.width / rect.width),
       y: (clientY - rect.top) * (canvas.height / rect.height),
@@ -116,10 +111,7 @@ const SignHandover: React.FC = () => {
 
   const draw = (e: React.MouseEvent | React.TouchEvent) => {
     if (!isDrawing) return;
-    if ("touches" in e) {
-      // Prevent scrolling while signing
-      if (e.cancelable) e.preventDefault();
-    }
+    if ("touches" in e && e.cancelable) e.preventDefault();
     const pos = getPos(e);
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return;
@@ -157,7 +149,7 @@ const SignHandover: React.FC = () => {
 
   if (loading)
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
+      <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
         <Loader2
           className="animate-spin text-slate-900 dark:text-white"
           size={32}
@@ -167,7 +159,7 @@ const SignHandover: React.FC = () => {
 
   if (error)
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
+      <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
         <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 text-center max-w-md w-full">
           <div className="bg-red-50 dark:bg-red-900/30 p-4 rounded-full text-red-600 dark:text-red-400 w-fit mx-auto mb-4">
             <AlertTriangle size={40} />
@@ -182,7 +174,7 @@ const SignHandover: React.FC = () => {
 
   if (success)
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
+      <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
         <div className="bg-white dark:bg-slate-900 p-10 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 text-center max-w-md w-full animate-in fade-in zoom-in duration-300">
           <div className="bg-emerald-50 dark:bg-emerald-900/30 p-4 rounded-full text-emerald-600 dark:text-emerald-400 w-fit mx-auto mb-6">
             <CheckCircle size={48} />
@@ -202,7 +194,7 @@ const SignHandover: React.FC = () => {
     );
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4 md:p-8 relative overflow-x-hidden">
+    <div className="min-h-screen w-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4 md:p-8 relative">
       {isSandbox && (
         <div className="fixed top-0 left-0 right-0 bg-amber-500 text-white text-[10px] font-bold text-center py-1 z-50 flex items-center justify-center gap-2 shadow-sm tracking-widest uppercase">
           <Database size={10} /> Testing Mode (Sandbox)
@@ -210,7 +202,7 @@ const SignHandover: React.FC = () => {
       )}
 
       <div
-        className={`w-full max-w-xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in slide-in-from-bottom-4 duration-500 mx-auto`}
+        className={`w-full max-w-xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in slide-in-from-bottom-4 duration-500`}
       >
         <div className="bg-slate-900 dark:bg-blue-600 p-8 text-white text-center">
           <div className="bg-white/10 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm border border-white/20 shadow-lg">
@@ -243,17 +235,17 @@ const SignHandover: React.FC = () => {
             <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">
               Assigned Assets
             </h3>
-            <div className="space-y-3">
+            <div className="space-y-4">
               {pending?.assetsSnapshot.map((a) => (
                 <div
                   key={a.id}
-                  className="flex justify-between items-center gap-4 group"
+                  className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 border-b border-slate-200/50 dark:border-slate-700/50 pb-3 last:border-0 last:pb-0"
                 >
-                  <div className="font-bold text-slate-800 dark:text-slate-200 text-sm truncate">
+                  <div className="font-bold text-slate-800 dark:text-slate-200 text-sm break-words flex-1 leading-tight">
                     {a.name}
                   </div>
-                  <div className="text-xs text-slate-400 font-mono bg-white dark:bg-slate-900 px-2 py-1 rounded border border-slate-200 dark:border-slate-700 shadow-sm shrink-0">
-                    {a.serialNumber || "No Serial"}
+                  <div className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 font-mono bg-white dark:bg-slate-900 px-2 py-1 rounded border border-slate-200 dark:border-slate-700 shadow-sm self-start whitespace-nowrap">
+                    SN: {a.serialNumber || "No Serial"}
                   </div>
                 </div>
               ))}

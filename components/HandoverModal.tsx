@@ -70,13 +70,11 @@ const HandoverModal: React.FC<HandoverModalProps> = ({
     }
   }, [isOpen, initialData, isReturn]);
 
-  // Handle Canvas Scaling - Sync buffer to visual size
   const resizeCanvas = () => {
     if (isOpen && containerRef.current && canvasRef.current) {
       const canvas = canvasRef.current;
       const rect = canvas.getBoundingClientRect();
 
-      // Clear only if size actually changed to avoid losing drawing on minor layout shifts
       if (canvas.width !== rect.width || canvas.height !== rect.height) {
         canvas.width = rect.width;
         canvas.height = rect.height;
@@ -95,7 +93,7 @@ const HandoverModal: React.FC<HandoverModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      const timer = setTimeout(resizeCanvas, 150); // Allow modal animation to finish
+      const timer = setTimeout(resizeCanvas, 150);
       window.addEventListener("resize", resizeCanvas);
       return () => {
         clearTimeout(timer);
@@ -118,7 +116,6 @@ const HandoverModal: React.FC<HandoverModalProps> = ({
       clientY = (e as React.MouseEvent).clientY;
     }
 
-    // Precise coordinates matching buffer resolution
     return {
       x: (clientX - rect.left) * (canvas.width / rect.width),
       y: (clientY - rect.top) * (canvas.height / rect.height),
@@ -136,7 +133,7 @@ const HandoverModal: React.FC<HandoverModalProps> = ({
 
   const draw = (e: React.MouseEvent | React.TouchEvent) => {
     if (!isDrawing) return;
-    if ("touches" in e && e.cancelable) e.preventDefault(); // Prevent scroll while drawing
+    if ("touches" in e && e.cancelable) e.preventDefault();
     const pos = getPos(e);
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return;
@@ -309,17 +306,17 @@ const HandoverModal: React.FC<HandoverModalProps> = ({
             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">
               Line Items
             </div>
-            <div className="max-h-40 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+            <div className="max-h-40 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
               {assets.map((a) => (
                 <div
                   key={a.id}
-                  className="flex justify-between items-center text-sm border-b border-slate-200/50 dark:border-slate-700/50 pb-2 last:border-0 last:pb-0"
+                  className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1 border-b border-slate-200/50 dark:border-slate-700/50 pb-2 last:border-0 last:pb-0"
                 >
-                  <span className="font-medium text-slate-700 dark:text-slate-200">
+                  <span className="font-medium text-slate-700 dark:text-slate-200 text-sm leading-tight break-words">
                     {a.name}
                   </span>
-                  <span className="text-xs font-mono text-slate-400 opacity-60">
-                    {a.serialNumber || "N/A"}
+                  <span className="text-[10px] font-mono text-slate-400 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-100 dark:border-slate-700 self-start whitespace-nowrap">
+                    SN: {a.serialNumber || "N/A"}
                   </span>
                 </div>
               ))}
