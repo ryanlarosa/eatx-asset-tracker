@@ -78,6 +78,8 @@ export interface PendingHandover {
   createdAt: string;
   createdBy: string;
   status: "Pending" | "Completed";
+  type: "Handover" | "Return" | "Transfer";
+  targetName?: string;
 }
 
 export interface IncidentReport {

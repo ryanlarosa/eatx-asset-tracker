@@ -58,13 +58,13 @@ const firebaseConfig = {
 };
 
 const fallbackConfig = {
-  apiKey: "PASTE_YOUR_API_KEY_HERE",
-  authDomain: "PASTE_YOUR_API_KEY_HERE",
-  projectId: "PASTE_YOUR_API_KEY_HERE",
-  storageBucket: "PASTE_YOUR_API_KEY_HERE",
-  messagingSenderId: "PASTE_YOUR_API_KEY_HERE",
-  appId: "PASTE_YOUR_API_KEY_HERE",
-  measurementId: "PASTE_YOUR_API_KEY_HERE",
+  apiKey: "AIzaSyAK1PFmG5-uawZ2-QkCExJAIj3ovr5Gc8k",
+  authDomain: "assettrack-626da.firebaseapp.com",
+  projectId: "assettrack-626da",
+  storageBucket: "assettrack-626da.firebasestorage.app",
+  messagingSenderId: "833915106836",
+  appId: "1:833915106836:web:24f97e6161f3d5ef5f9901",
+  measurementId: "G-T7N92CG779",
 };
 
 const activeConfig = firebaseConfig.apiKey ? firebaseConfig : fallbackConfig;
@@ -898,7 +898,9 @@ export const saveHandoverDocument = async (docData: HandoverDocument) =>
 
 export const createPendingHandover = async (
   employeeName: string,
-  assets: Asset[]
+  assets: Asset[],
+  type: "Handover" | "Return" | "Transfer" = "Handover",
+  targetName?: string
 ): Promise<string> => {
   const id = "ph-" + Date.now();
   await setDoc(
@@ -915,6 +917,8 @@ export const createPendingHandover = async (
       createdAt: new Date().toISOString(),
       createdBy: currentUserProfile?.email || "System",
       status: "Pending",
+      type,
+      targetName,
     } as PendingHandover)
   );
   return id;
@@ -956,13 +960,20 @@ export const completePendingHandover = async (
     assets: pending.assetsSnapshot,
     signatureBase64: signature,
     date: new Date().toISOString(),
-    type: "Handover",
+    type: pending.type || "Handover",
   });
 
-  await bulkAssignAssets(pending.assetIds, pending.employeeName);
+  if (pending.type === "Return") {
+    await bulkReturnAssets(pending.assetIds);
+  } else if (pending.type === "Transfer" && pending.targetName) {
+    await bulkTransferAssets(pending.assetIds, pending.targetName);
+  } else {
+    await bulkAssignAssets(pending.assetIds, pending.employeeName);
+  }
+
   await updateDoc(ref, { status: "Completed" });
 
-  const msg = `${pending.employeeName} has digitally signed for ${pending.assetsSnapshot.length} assets.`;
+  const msg = `${pending.employeeName} has digitally signed for ${pending.assetsSnapshot.length} assets (${pending.type}).`;
   await createNotification("success", "Handover Signed", msg, "/staff");
   await sendSystemEmail(
     "Handover Signed",

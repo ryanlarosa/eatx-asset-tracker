@@ -14,6 +14,7 @@ import {
   Loader2,
   Database,
   X,
+  Archive,
 } from "lucide-react";
 
 const SignHandover: React.FC = () => {
@@ -42,11 +43,11 @@ const SignHandover: React.FC = () => {
           setPending(data);
         } else {
           setError(
-            "This link is invalid, expired, or the assets have already been assigned."
+            "This link is invalid, expired, or the process has already been completed."
           );
         }
       } catch (e) {
-        setError("Failed to load handover details.");
+        setError("Failed to load details.");
       } finally {
         setLoading(false);
       }
@@ -90,8 +91,8 @@ const SignHandover: React.FC = () => {
       clientX = e.touches[0].clientX;
       clientY = e.touches[0].clientY;
     } else {
-      clientX = e.clientX;
-      clientY = e.clientY;
+      clientX = (e as React.MouseEvent).clientX;
+      clientY = (e as React.MouseEvent).clientY;
     }
 
     return {
@@ -172,6 +173,8 @@ const SignHandover: React.FC = () => {
       </div>
     );
 
+  const isReturn = pending?.type === "Return";
+
   if (success)
     return (
       <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
@@ -180,11 +183,11 @@ const SignHandover: React.FC = () => {
             <CheckCircle size={48} />
           </div>
           <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-3">
-            Handover Completed!
+            {isReturn ? "Assets Returned!" : "Handover Completed!"}
           </h2>
           <p className="text-slate-500 dark:text-slate-400 mb-8">
             Thank you, {pending?.employeeName}. Your digital acknowledgement has
-            been recorded in the system.
+            been recorded.
           </p>
           <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs font-medium text-slate-400 dark:text-slate-500 border border-slate-100 dark:border-slate-700">
             You can safely close this browser window.
@@ -206,13 +209,15 @@ const SignHandover: React.FC = () => {
       >
         <div className="bg-slate-900 dark:bg-blue-600 p-8 text-white text-center">
           <div className="bg-white/10 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm border border-white/20 shadow-lg">
-            <MonitorSmartphone size={32} />
+            {isReturn ? <Archive size={32} /> : <MonitorSmartphone size={32} />}
           </div>
           <h1 className="text-2xl font-bold tracking-tight">
-            EatX IT Asset Handover
+            {isReturn
+              ? "Asset Return Acknowledgement"
+              : "EatX IT Asset Handover"}
           </h1>
           <p className="text-slate-300 dark:text-blue-100 text-sm mt-1">
-            Digital Receipt & Acknowledgement
+            Digital Receipt & Record
           </p>
         </div>
 
@@ -226,14 +231,17 @@ const SignHandover: React.FC = () => {
               ,
             </p>
             <p className="text-slate-500 dark:text-slate-400 text-sm mt-2">
-              Please review the assets below. Your signature confirms you have
-              received them in good working condition.
+              Please review the assets below. Your signature confirms you have{" "}
+              {isReturn
+                ? "returned them to IT"
+                : "received them in good working condition"}
+              .
             </p>
           </div>
 
           <div className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 mb-8">
             <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">
-              Assigned Assets
+              {isReturn ? "Returning Items" : "Assigned Assets"}
             </h3>
             <div className="space-y-4">
               {pending?.assetsSnapshot.map((a) => (
@@ -301,7 +309,7 @@ const SignHandover: React.FC = () => {
           </button>
 
           <p className="text-[10px] text-slate-400 text-center mt-6 uppercase tracking-widest font-medium opacity-50">
-            Handover Ref: {id}
+            Ref ID: {id}
           </p>
         </div>
       </div>

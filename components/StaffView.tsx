@@ -161,22 +161,25 @@ const StaffView: React.FC = () => {
     }
   };
 
-  const handleAssignClick = async () => {
-    if (!targetEmployee || selectedAssetIds.size === 0) return;
+  const handleGenerateLink = async (linkType: "Handover" | "Return") => {
+    const empName = linkType === "Handover" ? targetEmployee : selectedEmployee;
+    if (!empName || selectedAssetIds.size === 0) return;
+
     setIsProcessing(true);
     try {
       const selectedAssetsList = assets.filter((a) =>
         selectedAssetIds.has(a.id)
       );
       const pendingId = await createPendingHandover(
-        targetEmployee,
-        selectedAssetsList
+        empName,
+        selectedAssetsList,
+        linkType
       );
       const isSandbox = getSandboxStatus();
       const link = `${window.location.origin}/#/sign/${pendingId}${
         isSandbox ? "?env=sandbox" : ""
       }`;
-      setLinkModal({ open: true, link, name: targetEmployee });
+      setLinkModal({ open: true, link, name: empName });
       setSelectedAssetIds(new Set());
       setTargetEmployee("");
     } catch (e) {
@@ -263,7 +266,7 @@ const StaffView: React.FC = () => {
       if (signModal.type === "Return") {
         if (sigs.itSig) await bulkReturnAssets(assetIds, docId);
         setSuccessMsg(
-          sigs.status === "Completed" ? "Return Finalized." : "Progress Saved."
+          sigs.status === "Completed" ? "Return Completed." : "Progress Saved."
         );
       } else if (signModal.type === "Transfer" && signModal.targetName) {
         await bulkTransferAssets(assetIds, signModal.targetName, docId);
@@ -664,7 +667,7 @@ const StaffView: React.FC = () => {
                   <div className="space-y-3">
                     <div>
                       <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase">
-                        Assign To (New Hire)
+                        Assign To (User Name)
                       </label>
                       <input
                         value={targetEmployee}
@@ -674,7 +677,7 @@ const StaffView: React.FC = () => {
                       />
                     </div>
                     <button
-                      onClick={handleAssignClick}
+                      onClick={() => handleGenerateLink("Handover")}
                       disabled={
                         selectedAssetIds.size === 0 ||
                         !targetEmployee ||
@@ -701,27 +704,41 @@ const StaffView: React.FC = () => {
                       }`}
                     >
                       <button
-                        onClick={handleReturnClick}
+                        onClick={() => handleGenerateLink("Return")}
                         disabled={selectedAssetIds.size === 0 || isProcessing}
-                        className="w-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 py-2 rounded-lg font-medium hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50 flex justify-center items-center gap-2 border border-slate-200 dark:border-slate-700"
+                        className="w-full bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 py-2 rounded-lg font-medium hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 flex justify-center items-center gap-2 border border-slate-200 dark:border-slate-700"
                       >
-                        <Archive size={16} /> Sign & Return
+                        {isProcessing ? (
+                          "Generating..."
+                        ) : (
+                          <>
+                            Generate Return Link <LinkIcon size={16} />
+                          </>
+                        )}
                       </button>
 
                       <div className="relative flex py-2 items-center">
                         <div className="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
-                        <span className="flex-shrink mx-2 text-slate-400 text-xs uppercase">
-                          OR Transfer
+                        <span className="flex-shrink mx-2 text-slate-400 text-[10px] uppercase font-bold">
+                          OR Direct Sign
                         </span>
                         <div className="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
                       </div>
+
+                      <button
+                        onClick={handleReturnClick}
+                        disabled={selectedAssetIds.size === 0 || isProcessing}
+                        className="w-full bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 py-2 rounded-lg font-medium hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50 flex justify-center items-center gap-2 border border-slate-200 dark:border-slate-700"
+                      >
+                        <Archive size={16} /> Sign & Return Now
+                      </button>
 
                       <div>
                         <input
                           value={targetEmployee}
                           onChange={(e) => setTargetEmployee(e.target.value)}
                           placeholder="Transfer to..."
-                          className={`mb-2 text-sm ${inputClass}`}
+                          className={`mt-4 mb-2 text-sm ${inputClass}`}
                         />
                         <button
                           onClick={handleTransferClick}
@@ -871,7 +888,7 @@ const StaffView: React.FC = () => {
                       {link.employeeName}
                     </div>
                     <div className="text-[10px] text-slate-400 uppercase font-bold tracking-tight">
-                      Pending Signature
+                      Pending {link.type || "Signature"}
                     </div>
                   </div>
                   <button
@@ -885,7 +902,7 @@ const StaffView: React.FC = () => {
                 <div className="p-4">
                   <div className="space-y-1 mb-4">
                     <div className="text-xs text-slate-400 font-bold mb-1">
-                      Items to Assign:
+                      Items to {link.type === "Return" ? "Return" : "Assign"}:
                     </div>
                     {link.assetsSnapshot.map((a) => (
                       <div
@@ -1104,7 +1121,7 @@ const StaffView: React.FC = () => {
               </button>
             </div>
             <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
-              A digital handover form has been created for{" "}
+              A digital form has been created for{" "}
               <span className="font-bold text-slate-900 dark:text-white">
                 {linkModal.name}
               </span>
@@ -1125,7 +1142,7 @@ const StaffView: React.FC = () => {
                 Copy Link
               </button>
               <a
-                href={`mailto:?subject=Asset Handover Signature Required&body=Hello ${linkModal.name},%0D%0A%0D%0APlease review and sign the asset handover form at the following link:%0D%0A%0D%0A${linkModal.link}%0D%0A%0D%0AThank you.`}
+                href={`mailto:?subject=Asset Handover Signature Required&body=Hello ${linkModal.name},%0D%0A%0D%0APlease review and sign the asset form at the following link:%0D%0A%0D%0A${linkModal.link}%0D%0A%0D%0AThank you.`}
                 className="flex-1 py-2.5 bg-slate-900 dark:bg-blue-600 hover:bg-black dark:hover:bg-blue-700 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2"
               >
                 Send Email <Mail size={16} />
