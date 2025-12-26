@@ -66,13 +66,13 @@ const firebaseConfig = {
 };
 
 const fallbackConfig = {
-  apiKey: "AIzaSyAK1PFmG5-uawZ2-QkCExJAIj3ovr5Gc8k",
-  authDomain: "assettrack-626da.firebaseapp.com",
-  projectId: "assettrack-626da",
-  storageBucket: "assettrack-626da.firebasestorage.app",
-  messagingSenderId: "833915106836",
-  appId: "1:833915106836:web:24f97e6161f3d5ef5f9901",
-  measurementId: "G-T7N92CG779",
+  apiKey: "PASTE_YOUR_API_KEY_HERE",
+  authDomain: "PASTE_YOUR_API_KEY_HER",
+  projectId: "PASTE_YOUR_API_KEY_HER",
+  storageBucket: "PASTE_YOUR_API_KEY_HER",
+  messagingSenderId: "PASTE_YOUR_API_KEY_HER",
+  appId: "PASTE_YOUR_API_KEY_HER",
+  measurementId: "PASTE_YOUR_API_KEY_HER",
 };
 
 const activeConfig = firebaseConfig.apiKey ? firebaseConfig : fallbackConfig;
@@ -96,7 +96,7 @@ const snapToData = <T>(snapshot: QuerySnapshot<DocumentData>): T[] => {
 const sanitizeData = (data: any) => {
   const clean: any = {};
   Object.keys(data).forEach((key) => {
-    if (data[key] !== undefined) {
+    if (data[key] !== undefined && data[key] !== null) {
       clean[key] = data[key];
     }
   });
@@ -123,7 +123,6 @@ const isSandbox = getSandboxStatus;
 
 const getColName = (name: string) => (isSandbox() ? `sandbox_${name}` : name);
 
-// Added helper to fix missing createNotification error and reduce code duplication
 export const createNotification = async (
   type: "info" | "warning" | "success" | "error",
   title: string,
@@ -366,8 +365,8 @@ export const saveAsset = async (asset: Asset) => {
     sanitizeData(finalAsset)
   );
 
-  // Log change
-  await addDoc(collection(db, getColName("assetLogs")), {
+  // Log change - using 'logs' collection as per original check-this-one
+  await addDoc(collection(db, getColName("logs")), {
     assetId,
     action: isNew ? "Created" : "Updated",
     details: isNew
@@ -393,7 +392,7 @@ export const importAssetsBulk = async (assets: Asset[]) => {
 
 export const getAssetLogs = async (assetId: string): Promise<AssetLog[]> => {
   const q = query(
-    collection(db, getColName("assetLogs")),
+    collection(db, getColName("logs")),
     where("assetId", "==", assetId),
     orderBy("timestamp", "desc")
   );
@@ -416,7 +415,7 @@ export const bulkAssignAssets = async (
       lastUpdated: timestamp,
     });
 
-    const logRef = doc(collection(db, getColName("assetLogs")));
+    const logRef = doc(collection(db, getColName("logs")));
     batch.set(logRef, {
       assetId: id,
       action: "Assigned",
@@ -440,7 +439,7 @@ export const bulkReturnAssets = async (assetIds: string[], docId: string) => {
       lastUpdated: timestamp,
     });
 
-    const logRef = doc(collection(db, getColName("assetLogs")));
+    const logRef = doc(collection(db, getColName("logs")));
     batch.set(logRef, {
       assetId: id,
       action: "Returned",
@@ -467,7 +466,7 @@ export const bulkTransferAssets = async (
       lastUpdated: timestamp,
     });
 
-    const logRef = doc(collection(db, getColName("assetLogs")));
+    const logRef = doc(collection(db, getColName("logs")));
     batch.set(logRef, {
       assetId: id,
       action: "Transferred",
@@ -603,7 +602,6 @@ export const createAssetRequest = async (req: Partial<AssetRequest>) => {
   };
   await addDoc(collection(db, getColName("requests")), sanitizeData(newReq));
 
-  // Updated to use createNotification helper
   await createNotification(
     "info",
     "New Asset Request",
@@ -634,7 +632,6 @@ export const fulfillAssetRequest = async (
   const batch = writeBatch(db);
   const timestamp = new Date().toISOString();
 
-  // Update Request
   batch.update(doc(db, getColName("requests"), requestId), {
     status: "Deployed",
     linkedAssetId: assetId,
@@ -642,15 +639,13 @@ export const fulfillAssetRequest = async (
     resolvedAt: timestamp,
   });
 
-  // Update Asset
   batch.update(doc(db, getColName("assets"), assetId), {
     status: "Active",
     assignedEmployee: employeeName,
     lastUpdated: timestamp,
   });
 
-  // Log Asset
-  const logRef = doc(collection(db, getColName("assetLogs")));
+  const logRef = doc(collection(db, getColName("logs")));
   batch.set(logRef, {
     assetId,
     action: "Assigned",
@@ -691,7 +686,6 @@ export const createIncidentReport = async (report: Partial<IncidentReport>) => {
     sanitizeData(newReport)
   );
 
-  // Updated to use createNotification helper
   await createNotification(
     "warning",
     "New Incident Reported",
@@ -734,14 +728,12 @@ export const processAssetReplacement = async (
   const batch = writeBatch(db);
   const timestamp = new Date().toISOString();
 
-  // 1. Retire old asset
   batch.update(doc(db, getColName("assets"), oldAssetId), {
     status: "Retired",
     lastUpdated: timestamp,
     assignedEmployee: "",
   });
 
-  // 2. Assign new asset
   const ticketSnap = await getDoc(doc(db, getColName("incidents"), ticketId));
   const ticketData = ticketSnap.data() as IncidentReport;
 
@@ -752,15 +744,13 @@ export const processAssetReplacement = async (
     lastUpdated: timestamp,
   });
 
-  // 3. Resolve ticket
   batch.update(doc(db, getColName("incidents"), ticketId), {
     status: "Resolved",
     resolvedAt: timestamp,
     resolutionNotes: `Replaced with Asset ID: ${newAssetId}. ${notes}`,
   });
 
-  // Logs
-  const log1 = doc(collection(db, getColName("assetLogs")));
+  const log1 = doc(collection(db, getColName("logs")));
   batch.set(log1, {
     assetId: oldAssetId,
     action: "Retired",
@@ -769,7 +759,7 @@ export const processAssetReplacement = async (
     timestamp,
   });
 
-  const log2 = doc(collection(db, getColName("assetLogs")));
+  const log2 = doc(collection(db, getColName("logs")));
   batch.set(log2, {
     assetId: newAssetId,
     action: "Replaced",
@@ -807,7 +797,6 @@ export const deleteInvoice = async (id: string) => {
 // --- HANDOVER & SIGNING ---
 
 export const getHandoverDocuments = async (): Promise<HandoverDocument[]> => {
-  // Restored collection name to 'documents' to match your existing data
   const snap = await getDocs(
     query(collection(db, getColName("documents")), orderBy("date", "desc"))
   );
@@ -815,7 +804,6 @@ export const getHandoverDocuments = async (): Promise<HandoverDocument[]> => {
 };
 
 export const saveHandoverDocument = async (docData: HandoverDocument) => {
-  // Restored collection name to 'documents'
   await setDoc(
     doc(db, getColName("documents"), docData.id),
     sanitizeData(docData)
@@ -843,7 +831,7 @@ export const createPendingHandover = async (
   targetName?: string
 ) => {
   const id = `pending-${Math.random().toString(36).substr(2, 9)}`;
-  const pending: PendingHandover = {
+  const pending = {
     id,
     employeeName,
     assetIds: assets.map((a) => a.id),
@@ -858,7 +846,11 @@ export const createPendingHandover = async (
     type,
     targetName,
   };
-  await setDoc(doc(db, getColName("pendingHandovers"), id), pending);
+  // CRITICAL FIX: Sanitize before write to remove potential 'undefined' targetName
+  await setDoc(
+    doc(db, getColName("pendingHandovers"), id),
+    sanitizeData(pending)
+  );
   return id;
 };
 
@@ -884,7 +876,6 @@ export const completePendingHandover = async (
   const docId = `doc-${Math.random().toString(36).substr(2, 9)}`;
   const handoverType = data.type || "Handover";
 
-  // 1. Save Document
   const handoverDoc: HandoverDocument = {
     id: docId,
     employeeName: data.employeeName,
@@ -892,19 +883,16 @@ export const completePendingHandover = async (
     signatureBase64: signature,
     date: new Date().toISOString(),
     type: handoverType,
-    // Assignments/Transfers are Completed immediately. Returns are Pending IT verification.
     status: handoverType === "Return" ? "Pending" : "Completed",
   };
   await saveHandoverDocument(handoverDoc);
 
-  // 2. Perform registry actions immediately for non-returns
   if (handoverType === "Handover") {
     await bulkAssignAssets(data.assetIds, data.employeeName, docId);
   } else if (handoverType === "Transfer" && data.targetName) {
     await bulkTransferAssets(data.assetIds, data.targetName, docId);
   }
 
-  // 3. Mark pending record as finished
   await updateDoc(doc(db, getColName("pendingHandovers"), id), {
     status: "Completed",
   });
@@ -914,7 +902,6 @@ export const completePendingHandover = async (
       ? `${data.employeeName} has provided their return signature. IT Manager verification required.`
       : `${data.employeeName} has digitally signed for ${data.assetsSnapshot.length} assets. Registry updated.`;
 
-  // Fixed missing createNotification error
   await createNotification(
     handoverType === "Return" ? "info" : "success",
     "Signature Received",
@@ -939,7 +926,6 @@ export interface PublicStatusResult {
 export const getPublicItemStatus = async (
   refId: string
 ): Promise<PublicStatusResult | null> => {
-  // Try Tickets (Incidents)
   const ticketSnap = await getDocs(
     query(
       collection(db, getColName("incidents")),
@@ -960,7 +946,6 @@ export const getPublicItemStatus = async (
     };
   }
 
-  // Try Requests
   const reqSnap = await getDocs(
     query(
       collection(db, getColName("requests")),
@@ -989,7 +974,7 @@ export const getPublicItemStatus = async (
 export const resetDatabase = async () => {
   const collections = [
     "assets",
-    "assetLogs",
+    "logs",
     "projects",
     "incidents",
     "requests",
@@ -1025,7 +1010,6 @@ export const renameMasterDataItem = async (
     });
   });
 
-  // Update Config
   const config = await getAppConfig();
   if (type === "category")
     config.categories = config.categories.map((c) =>
