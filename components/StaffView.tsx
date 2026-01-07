@@ -282,7 +282,7 @@ const StaffView: React.FC = () => {
       }
 
       const isCompleted = doc.status === 'Completed';
-      const statusLabel = isCompleted ? 'COMPLETED' : (doc.type === 'Return' ? 'PENDING IT VERIFICATION' : 'PENDING');
+      const statusLabel = isCompleted ? 'COMPLETED' : (doc.type === 'Return' ? 'PENDING IT Hub VERIFICATION' : 'PENDING');
       const statusColor = isCompleted ? '#059669' : '#d97706';
 
       const htmlContent = `
@@ -320,7 +320,7 @@ const StaffView: React.FC = () => {
             <div class="page-header">
                 <div class="logo-container">
                     <div class="eatx-logo">eatx.</div>
-                    <div class="eatx-tagline">Creating Concepts of the Future</div>
+                    <div class="eatx-tagline">IT Hub Operations</div>
                 </div>
                 <div class="company-info">
                     <div class="company-name">EatX Facilities Management LLC</div>
@@ -371,7 +371,7 @@ const StaffView: React.FC = () => {
             <div class="footer-spacer" style="height: 100px;"></div>
             ${signatureBlock}
             <div class="page-footer">
-                This document is generated through Eatx Asset Tracker
+                This document is generated through EatX IT Hub
             </div>
             <script>
                 window.onload = function() { 
@@ -387,7 +387,7 @@ const StaffView: React.FC = () => {
   };
 
   if (!canEdit) {
-      return <div className="p-8 text-center text-slate-500 dark:text-slate-400">You do not have permission to manage staff assets.</div>;
+      return <div className="p-8 text-center text-slate-500 dark:text-slate-400">You do not have permission to manage staff assets in IT Hub.</div>;
   }
 
   const inputClass = "w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-slate-900 dark:focus:ring-blue-600 bg-white dark:bg-slate-950 text-slate-900 dark:text-white";
@@ -727,7 +727,7 @@ const StaffView: React.FC = () => {
                                             onClick={() => handleResumeSign(doc)} 
                                             className="px-3 py-2 bg-amber-500 text-white rounded-lg text-xs font-bold hover:bg-amber-600 shadow-sm flex items-center gap-1"
                                         >
-                                            Sign (IT)
+                                            Sign (IT Hub)
                                         </button>
                                     )}
                                 </div>
@@ -784,7 +784,7 @@ const StaffView: React.FC = () => {
                         Copy Link
                     </button>
                     <a 
-                        href={`mailto:?subject=Asset Handover Signature Required&body=Hello ${linkModal.name},%0D%0A%0D%0APlease review and sign the asset form at the following link:%0D%0A%0D%0A${linkModal.link}%0D%0A%0D%0AThank you.`}
+                        href={`mailto:?subject=IT Hub: Signature Required&body=Hello ${linkModal.name},%0D%0A%0D%0APlease review and sign the asset form at the following link:%0D%0A%0D%0A${linkModal.link}%0D%0A%0D%0AThank you.`}
                         className="flex-1 py-2.5 bg-slate-900 dark:bg-blue-600 hover:bg-black dark:hover:bg-blue-700 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2"
                     >
                         Send Email <Mail size={16}/>

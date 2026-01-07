@@ -147,7 +147,7 @@ const Settings: React.FC = () => {
           
           await sendSystemEmail(
               "Test Notification", 
-              "This is a test email from your AssetTrack System. If you are reading this, the integration is working correctly.",
+              "This is a test email from your IT Hub System. If you are reading this, the integration is working correctly.",
               window.location.href
           );
           showSuccess(`Test email sent to ${emailConfig.targetEmail}`);
@@ -323,7 +323,7 @@ const Settings: React.FC = () => {
   if (isSandboxUser) {
       return (
          <div className="space-y-6">
-            <h1 className="text-2xl font-bold text-slate-800 dark:text-white">System Configuration</h1>
+            <h1 className="text-2xl font-bold text-slate-800 dark:text-white">IT Hub Configuration</h1>
             <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
                 <div className="flex justify-between items-center">
                     <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
@@ -345,7 +345,7 @@ const Settings: React.FC = () => {
   return (
     <div className="space-y-6 relative pb-12">
       <div className="flex items-center justify-between">
-         <h1 className="text-2xl font-bold text-slate-800 dark:text-white">System Configuration</h1>
+         <h1 className="text-2xl font-bold text-slate-800 dark:text-white">IT Hub Configuration</h1>
          <div className="flex items-center gap-2 text-xs font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1 rounded-full border border-emerald-100 dark:border-emerald-900/30">
              <Check size={14} />
              <span>Connected to Cloud</span>

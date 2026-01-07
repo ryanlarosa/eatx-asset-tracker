@@ -184,6 +184,29 @@ onAuthStateChanged(auth, async (firebaseUser) => {
       if (userDoc.exists()) {
         const data = userDoc.data() as UserProfile;
         currentUserProfile = { ...data, email: firebaseUser.email || "" };
+
+        const currentSandboxState =
+          localStorage.getItem("eatx_sandbox") === "true";
+
+        // AUTO-SWITCH BASED ON ROLE
+        if (currentUserProfile.role === "sandbox_user") {
+          if (!currentSandboxState) {
+            console.log(
+              "Sandbox user detected. Auto-switching to Sandbox Mode."
+            );
+            localStorage.setItem("eatx_sandbox", "true");
+            window.location.reload();
+            return;
+          }
+        } else {
+          // Normal users (Admin, Tech, Viewer) should default back to Live if they were previously in sandbox
+          if (currentSandboxState) {
+            console.log("Normal user detected. Returning to Live Mode.");
+            localStorage.setItem("eatx_sandbox", "false");
+            window.location.reload();
+            return;
+          }
+        }
       } else {
         const isSuperAdmin =
           firebaseUser.email === "it@eatx.com" ||
@@ -604,13 +627,13 @@ export const createAssetRequest = async (req: Partial<AssetRequest>) => {
 
   await createNotification(
     "info",
-    "New Asset Request",
+    "IT Hub: New Request",
     `${req.requesterName} requested a ${req.category} for ${req.department}.`,
     "/requests"
   );
 
   await sendSystemEmail(
-    "New Asset Request",
+    "IT Hub: New Asset Request",
     `${req.requesterName} has submitted a new request for ${req.category}.`,
     window.location.origin + "/#/requests"
   );
@@ -649,7 +672,7 @@ export const fulfillAssetRequest = async (
   batch.set(logRef, {
     assetId,
     action: "Assigned",
-    details: `Assigned to ${employeeName} via Request fulfillment.`,
+    details: `Assigned to ${employeeName} via IT Hub Request fulfillment.`,
     performedBy: currentUserProfile?.email || "System",
     timestamp,
   });
@@ -688,13 +711,13 @@ export const createIncidentReport = async (report: Partial<IncidentReport>) => {
 
   await createNotification(
     "warning",
-    "New Incident Reported",
+    "IT Hub: New Incident",
     `${report.reportedBy} reported an issue at ${report.location}.`,
     "/repairs"
   );
 
   await sendSystemEmail(
-    "New Incident Report",
+    "IT Hub: New Incident Report",
     `${report.reportedBy} reported: ${report.description}`,
     window.location.origin + "/#/repairs"
   );
@@ -899,12 +922,12 @@ export const completePendingHandover = async (
 
   const msg =
     handoverType === "Return"
-      ? `${data.employeeName} has provided their return signature. IT Manager verification required.`
-      : `${data.employeeName} has digitally signed for ${data.assetsSnapshot.length} assets. Registry updated.`;
+      ? `${data.employeeName} has provided their return signature. IT Hub verification required.`
+      : `${data.employeeName} has digitally signed for ${data.assetsSnapshot.length} assets. IT Hub Updated.`;
 
   await createNotification(
     handoverType === "Return" ? "info" : "success",
-    "Signature Received",
+    "IT Hub: Signature Received",
     msg,
     "/staff"
   );

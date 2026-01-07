@@ -3,11 +3,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getPendingHandover, completePendingHandover, getSandboxStatus } from '../services/storageService';
 import { PendingHandover } from '../types';
-import { MonitorSmartphone, CheckCircle, AlertTriangle, PenTool, Loader2, Database, X, Archive } from 'lucide-react';
+import { MonitorSmartphone, CheckCircle, AlertTriangle, PenTool, Loader2, Database, Archive } from 'lucide-react';
 
 const SignHandover: React.FC = () => {
     const { id } = useParams<{ id: string }>();
-    const navigate = useNavigate();
     const [pending, setPending] = useState<PendingHandover | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -119,15 +118,16 @@ const SignHandover: React.FC = () => {
     };
 
     const handleSubmit = async () => {
-        if (!id || !canvasRef.current) return;
+        // PREVENTION: Logic guard for double-clicks
+        if (!id || !canvasRef.current || isSubmitting) return;
+        
         setIsSubmitting(true);
         try {
             await completePendingHandover(id, canvasRef.current.toDataURL('image/png'));
             setSuccess(true);
         } catch (e) {
             alert("Failed to submit. Please try again.");
-        } finally {
-            setIsSubmitting(false);
+            setIsSubmitting(false); // Allow retry on failure
         }
     };
 
@@ -150,7 +150,7 @@ const SignHandover: React.FC = () => {
             <div className="bg-white dark:bg-slate-900 p-10 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 text-center max-w-md w-full animate-in fade-in zoom-in duration-300">
                 <div className="bg-emerald-50 dark:bg-emerald-900/30 p-4 rounded-full text-emerald-600 dark:text-emerald-400 w-fit mx-auto mb-6"><CheckCircle size={48}/></div>
                 <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-3">{isReturn ? 'Assets Returned!' : 'Handover Completed!'}</h2>
-                <p className="text-slate-500 dark:text-slate-400 mb-8">Thank you, {pending?.employeeName}. Your digital acknowledgement has been recorded.</p>
+                <p className="text-slate-500 dark:text-slate-400 mb-8">Thank you, {pending?.employeeName}. Your digital acknowledgement has been recorded in the IT Hub.</p>
                 <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs font-medium text-slate-400 dark:text-slate-500 border border-slate-100 dark:border-slate-700">You can safely close this browser window.</div>
             </div>
         </div>
@@ -169,7 +169,7 @@ const SignHandover: React.FC = () => {
                     <div className="bg-white/10 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm border border-white/20 shadow-lg">
                         {isReturn ? <Archive size={32} /> : <MonitorSmartphone size={32} />}
                     </div>
-                    <h1 className="text-2xl font-bold tracking-tight">{isReturn ? 'Asset Return Acknowledgement' : 'EatX IT Asset Handover'}</h1>
+                    <h1 className="text-2xl font-bold tracking-tight">{isReturn ? 'Asset Return Form' : 'EatX IT Hub Handover'}</h1>
                     <p className="text-slate-300 dark:text-blue-100 text-sm mt-1">Digital Receipt & Record</p>
                 </div>
 
@@ -179,7 +179,7 @@ const SignHandover: React.FC = () => {
                             Hello <span className="font-bold text-slate-900 dark:text-white">{pending?.employeeName}</span>,
                         </p>
                         <p className="text-slate-500 dark:text-slate-400 text-sm mt-2">
-                            Please review the assets below. Your signature confirms you have {isReturn ? 'returned them to IT' : 'received them in good working condition'}.
+                            Please review the items below. Your signature confirms you have {isReturn ? 'returned them to IT' : 'received them in good working condition'}.
                         </p>
                     </div>
 
@@ -227,7 +227,7 @@ const SignHandover: React.FC = () => {
                         disabled={!hasSignature || isSubmitting}
                         className="w-full bg-slate-900 dark:bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-black dark:hover:bg-blue-700 disabled:opacity-50 transition-all flex justify-center items-center gap-3 shadow-xl shadow-slate-900/20 dark:shadow-blue-900/20"
                     >
-                        {isSubmitting ? <Loader2 className="animate-spin" /> : 'Confirm & Complete'}
+                        {isSubmitting ? <Loader2 className="animate-spin" /> : 'Confirm Acknowledgement'}
                     </button>
                     
                     <p className="text-[10px] text-slate-400 text-center mt-6 uppercase tracking-widest font-medium opacity-50">Ref ID: {id}</p>

@@ -36,8 +36,8 @@ const LoginScreen: React.FC = () => {
                     <div className="bg-slate-900 dark:bg-blue-600 p-4 rounded-2xl mb-4 shadow-lg shadow-slate-900/20 dark:shadow-blue-900/20">
                         <MonitorSmartphone size={32} className="text-white" />
                     </div>
-                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white">EatX Asset Manager</h1>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Cloud Access • Role Protected</p>
+                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white">EatX IT Hub</h1>
+                    <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Cloud Access • Unified IT Platform</p>
                 </div>
 
                 <div className={`mb-6 p-3 rounded-lg text-xs font-mono border flex items-center gap-2 ${envStatus.ok ? 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-900/30' : 'bg-red-50 text-red-700 border-red-100'}`}>
@@ -57,12 +57,12 @@ const LoginScreen: React.FC = () => {
                     {error && <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm p-3 rounded-lg flex items-center gap-2"><Lock size={14} /> {error}</div>}
                     
                     <button type="submit" disabled={loading || !envStatus.ok} className="w-full bg-slate-900 dark:bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-black dark:hover:bg-blue-700 transition-all flex justify-center items-center gap-2 disabled:opacity-50">
-                        {loading ? <Loader2 className="animate-spin" /> : 'Login'}
+                        {loading ? <Loader2 className="animate-spin" /> : 'Sign In'}
                     </button>
                     
                     <div className="flex flex-col items-center gap-4 mt-6 pt-6 border-t border-slate-100 dark:border-slate-800">
                         <Link to="/track" className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1">
-                            <Search size={14} /> Check Ticket Status
+                            <Search size={14} /> Track Ticket or Request
                         </Link>
                         <div className="text-center text-xs text-slate-400">
                             Authorized Personnel Only

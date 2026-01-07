@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { MonitorSmartphone, Database, Shield, LayoutDashboard, List, ShoppingBag, Wrench, Receipt, CalendarCheck, Users, Settings as SettingsIcon, X, ClipboardList } from 'lucide-react';
+import { MonitorSmartphone, Database, Shield, LayoutDashboard, List, ShoppingBag, Wrench, Receipt, CalendarCheck, Users, Settings as SettingsIcon, X, ClipboardList, LifeBuoy, Box } from 'lucide-react';
 import { getSandboxStatus, getCurrentUserProfile } from '../services/storageService';
 
 interface SidebarProps {
@@ -38,7 +38,7 @@ const Sidebar: React.FC<SidebarProps> = ({ notificationCount, isOpen, onClose })
             <div className="bg-slate-900 dark:bg-blue-600 text-white p-1.5 rounded-lg shadow-sm">
                 <MonitorSmartphone size={20} />
             </div>
-            <span>EatX IT</span>
+            <span>IT Hub</span>
           </div>
           <button onClick={onClose} className="md:hidden ml-auto text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 p-1 rounded-lg">
             <X size={20} />
@@ -59,15 +59,14 @@ const Sidebar: React.FC<SidebarProps> = ({ notificationCount, isOpen, onClose })
         </div>
 
         <nav className="flex-1 px-4 overflow-y-auto custom-scrollbar">
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-2 mt-2">Menu</div>
+          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-2 mt-2">Core Modules</div>
           
           <Link to="/" className={linkClass('/')} onClick={onClose}><LayoutDashboard size={18} /> Dashboard</Link>
-          <Link to="/assets" className={linkClass('/assets')} onClick={onClose}><List size={18} /> Asset Registry</Link>
-          <Link to="/requests" className={linkClass('/requests')} onClick={onClose}><ShoppingBag size={18} /> Requests</Link>
-          <Link to="/repairs" className={linkClass('/repairs')} onClick={onClose}><Wrench size={18} /> Repairs</Link>
-          <Link to="/invoices" className={linkClass('/invoices')} onClick={onClose}><Receipt size={18} /> Invoices</Link>
+          <Link to="/repairs" className={linkClass('/repairs')} onClick={onClose}><LifeBuoy size={18} /> Help Desk</Link>
+          <Link to="/assets" className={linkClass('/assets')} onClick={onClose}><Box size={18} /> Inventory Registry</Link>
+          <Link to="/requests" className={linkClass('/requests')} onClick={onClose}><ShoppingBag size={18} /> Procurement</Link>
           
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-2 mt-6">Management</div>
+          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-2 mt-6">Operations</div>
           
           <Link to="/tasks" className={linkClass('/tasks')} onClick={onClose}><ClipboardList size={18} /> Task Board</Link>
           <Link to="/planner" className={linkClass('/planner')} onClick={onClose}>
@@ -76,13 +75,19 @@ const Sidebar: React.FC<SidebarProps> = ({ notificationCount, isOpen, onClose })
               {notificationCount > 0 && <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-sm">{notificationCount}</span>}
              </div>
           </Link>
+          <Link to="/invoices" className={linkClass('/invoices')} onClick={onClose}><Receipt size={18} /> Invoices</Link>
           
-          {canEdit && <Link to="/staff" className={linkClass('/staff')} onClick={onClose}><Users size={18} /> Staff & Audit</Link>}
-          <Link to="/settings" className={linkClass('/settings')} onClick={onClose}><SettingsIcon size={18} /> Settings</Link>
+          {canEdit && (
+            <>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-2 mt-6">Admin</div>
+              <Link to="/staff" className={linkClass('/staff')} onClick={onClose}><Users size={18} /> Users & Handovers</Link>
+              <Link to="/settings" className={linkClass('/settings')} onClick={onClose}><SettingsIcon size={18} /> Configuration</Link>
+            </>
+          )}
         </nav>
         
         <div className="p-4 border-t border-slate-100 dark:border-slate-800 text-center">
-            <p className="text-[10px] text-slate-400">v1.4.0 • EatX Internal Tool</p>
+            <p className="text-[10px] text-slate-400">v1.6.0 • EatX IT Hub</p>
         </div>
       </div>
     </>

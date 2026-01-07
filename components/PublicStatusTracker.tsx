@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { getPublicItemStatus, PublicStatusResult, getSandboxStatus } from '../services/storageService';
-import { Search, Loader2, Clock, CheckCircle, AlertCircle, Calendar, MessageSquare, Database, ArrowRight, Activity, ChevronRight } from 'lucide-react';
+import { Search, Loader2, Clock, CheckCircle, AlertCircle, Calendar, MessageSquare, Database, Activity } from 'lucide-react';
 
 const PublicStatusTracker: React.FC = () => {
     const [refId, setRefId] = useState('');
@@ -73,7 +73,7 @@ const PublicStatusTracker: React.FC = () => {
                     <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
                         <Activity size={32} className="text-slate-900 dark:text-blue-500" />
                     </div>
-                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Track Request Status</h1>
+                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white">IT Hub Tracker</h1>
                     <p className="text-slate-500 dark:text-slate-400 text-sm mt-2">Enter your Ticket (TKT) or Request (REQ) number below.</p>
                 </div>
 
@@ -151,7 +151,7 @@ const PublicStatusTracker: React.FC = () => {
                                 <div>
                                     <h3 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Latest Updates</h3>
                                     <div className="flex items-start gap-3 bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-900/30">
-                                        <MessageSquare size={16} className="text-blue-500 mt-0.5 shrink-0" />
+                                        <Clock size={16} className="text-blue-500 mt-0.5 shrink-0" />
                                         <p className="text-sm text-blue-800 dark:text-blue-300">{result.notes}</p>
                                     </div>
                                 </div>

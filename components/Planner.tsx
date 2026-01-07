@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Project, ProjectItem } from '../types';
 import { listenToProjects, saveProject, deleteProject, getAppConfig, getCurrentUserProfile } from '../services/storageService';
@@ -232,7 +233,7 @@ const Planner: React.FC = () => {
             </table>
 
             <div class="footer">
-                Generated from EatX Asset Tracker on ${dateStr}
+                Generated from EatX IT Hub on ${dateStr}
             </div>
 
             <script>window.onload = function() { window.print(); }</script>
@@ -375,13 +376,13 @@ const Planner: React.FC = () => {
                             <input required placeholder="Item Name" className="md:col-span-3 p-2 text-sm rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white" value={activeProjectId === project.id ? newItemName : ''} onChange={e => { setActiveProjectId(project.id); setNewItemName(e.target.value); }} />
                             <select className="md:col-span-2 p-2 text-sm rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white" value={activeProjectId === project.id ? newItemCategory : categories[0]} onChange={e => { setActiveProjectId(project.id); setNewItemCategory(e.target.value); }}>{categories.map(c => <option key={c} value={c}>{c}</option>)}</select>
                             
-                            <input type="number" placeholder="Qty" min="1" className="md:col-span-1 p-2 text-sm rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white" value={activeProjectId === project.id ? newItemQuantity : 1} onChange={e => { setActiveProjectId(project.id); setNewItemQuantity(parseInt(e.target.value) || 1); }} />
+                            <input type="number" placeholder="Qty" min="1" className="md:col-span-1 p-2 text-sm rounded border border-slate-300 dark:border-slate-700 dark:bg-slate-700 dark:text-white" value={activeProjectId === project.id ? newItemQuantity : 1} onChange={e => { setActiveProjectId(project.id); setNewItemQuantity(parseInt(e.target.value) || 1); }} />
                             
-                            <input type="number" placeholder="Unit Cost" className="md:col-span-2 p-2 text-sm rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white" value={activeProjectId === project.id ? (newItemCost || '') : ''} onChange={e => { setActiveProjectId(project.id); setNewItemCost(parseFloat(e.target.value)); }} />
+                            <input type="number" placeholder="Unit Cost" className="md:col-span-2 p-2 text-sm rounded border border-slate-300 dark:border-slate-700 dark:bg-slate-700 dark:text-white" value={activeProjectId === project.id ? (newItemCost || '') : ''} onChange={e => { setActiveProjectId(project.id); setNewItemCost(parseFloat(e.target.value)); }} />
                             
-                            <input required type="date" className="md:col-span-3 p-2 text-sm rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white" value={activeProjectId === project.id ? newItemDate : ''} onChange={e => { setActiveProjectId(project.id); setNewItemDate(e.target.value); }} />
+                            <input required type="date" className="md:col-span-3 p-2 text-sm rounded border border-slate-300 dark:border-slate-700 dark:bg-slate-700 dark:text-white" value={activeProjectId === project.id ? newItemDate : ''} onChange={e => { setActiveProjectId(project.id); setNewItemDate(e.target.value); }} />
                             
-                            <input placeholder="Description (Optional)" className="md:col-span-11 p-2 text-sm rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white" value={activeProjectId === project.id ? newItemDesc : ''} onChange={e => { setActiveProjectId(project.id); setNewItemDesc(e.target.value); }} />
+                            <input placeholder="Description (Optional)" className="md:col-span-11 p-2 text-sm rounded border border-slate-300 dark:border-slate-700 dark:bg-slate-700 dark:text-white" value={activeProjectId === project.id ? newItemDesc : ''} onChange={e => { setActiveProjectId(project.id); setNewItemDesc(e.target.value); }} />
 
                             <button type="submit" className="md:col-span-1 bg-slate-800 dark:bg-blue-600 text-white rounded hover:bg-slate-900 dark:hover:bg-blue-700 flex items-center justify-center"><PlusCircle size={18} /></button>
                         </form>

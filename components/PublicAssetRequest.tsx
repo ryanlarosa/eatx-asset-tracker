@@ -25,7 +25,7 @@ const PublicAssetRequest: React.FC = () => {
 
     useEffect(() => {
         const init = async () => {
-            const c = await getAppConfig();
+            const [c] = await Promise.all([getAppConfig()]);
             setDepartments(c.departments || []);
             setLoading(false);
         };
@@ -47,6 +47,8 @@ const PublicAssetRequest: React.FC = () => {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        // PREVENTION: Stop if already submitting to avoid double-click issues
+        if (submitting) return;
         
         // Validate items
         if (requestItems.some(i => !i.itemName.trim())) {
@@ -70,8 +72,7 @@ const PublicAssetRequest: React.FC = () => {
             setSubmitted(true);
         } catch (e) {
             alert("Error submitting request. Please try again.");
-        } finally {
-            setSubmitting(false);
+            setSubmitting(false); // Reset so user can try again
         }
     };
 
@@ -86,7 +87,7 @@ const PublicAssetRequest: React.FC = () => {
                 <div className="bg-emerald-50 dark:bg-emerald-900/30 p-3 rounded-full text-emerald-600 dark:text-emerald-400 w-fit mx-auto mb-4"><CheckCircle size={32}/></div>
                 <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-2">Request Submitted</h2>
                 <p className="text-slate-500 dark:text-slate-400 mb-6">
-                    Your request for {requestItems.length} asset{requestItems.length > 1 ? 's' : ''} for <strong>{employeeName}</strong> has been logged. The IT team will review it shortly.
+                    Your request for {requestItems.length} asset{requestItems.length > 1 ? 's' : ''} for <strong>{employeeName}</strong> has been logged. The IT Hub team will review it shortly.
                 </p>
                 <button onClick={() => window.location.reload()} className="text-sm text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white underline">Submit another request</button>
             </div>
@@ -103,8 +104,8 @@ const PublicAssetRequest: React.FC = () => {
             <div className={`max-w-lg w-full bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden my-8 w-full ${isSandbox ? 'mt-8' : ''}`}>
                 <div className="bg-slate-900 dark:bg-blue-600 p-6 text-white text-center">
                     <div className="flex justify-center mb-3"><ShoppingBag size={32} className="text-emerald-400" /></div>
-                    <h1 className="text-xl font-bold">Request Asset</h1>
-                    <p className="text-slate-300 dark:text-blue-100 text-sm mt-1">EatX IT Procurement</p>
+                    <h1 className="text-xl font-bold">IT Hub Procurement</h1>
+                    <p className="text-slate-300 dark:text-blue-100 text-sm mt-1">EatX Unified Asset Request Portal</p>
                 </div>
                 
                 <form onSubmit={handleSubmit} className="p-6 md:p-8 space-y-5 flex flex-col items-center justify-center w-full">

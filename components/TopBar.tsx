@@ -122,7 +122,7 @@ const TopBar = ({ onToggleSidebar, isDarkMode, toggleTheme, user, notifications,
                 </button>
                 <div className="md:hidden flex items-center gap-2 font-bold text-slate-900 dark:text-white">
                     <div className="bg-slate-900 dark:bg-blue-600 text-white p-1 rounded-md"><MonitorSmartphone size={18} /></div>
-                    <span>EatX IT</span>
+                    <span>IT Hub</span>
                 </div>
             </div>
 

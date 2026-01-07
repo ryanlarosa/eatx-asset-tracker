@@ -26,7 +26,7 @@ export const parseAssetDescription = async (text: string): Promise<Partial<any>>
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   const prompt = `
-    You are an IT Asset Manager assistant for an F&B company 'EatX'.
+    You are an AI assistant for 'EatX IT Hub', a complete IT operations platform.
     Extract asset details from the following text description.
     
     Current Date: ${new Date().toISOString().split('T')[0]}

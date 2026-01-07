@@ -94,6 +94,9 @@ const PublicReportIssue: React.FC = () => {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        // PREVENTION: Stop if already submitting to avoid double-click issues
+        if (submitting) return;
+        
         setSubmitting(true);
         try {
             await createIncidentReport({
@@ -111,8 +114,7 @@ const PublicReportIssue: React.FC = () => {
             setSubmitted(true);
         } catch (e) {
             alert("Error submitting report. Please try again.");
-        } finally {
-            setSubmitting(false);
+            setSubmitting(false); // Reset on error so user can retry
         }
     };
 
@@ -126,7 +128,7 @@ const PublicReportIssue: React.FC = () => {
             <div className="bg-white dark:bg-slate-900 p-8 rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 text-center max-w-md w-full animate-in fade-in zoom-in">
                 <div className="bg-emerald-50 dark:bg-emerald-900/30 p-3 rounded-full text-emerald-600 dark:text-emerald-400 w-fit mx-auto mb-4"><CheckCircle size={32}/></div>
                 <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-2">Report Submitted</h2>
-                <p className="text-slate-500 dark:text-slate-400 mb-6">Thank you. The IT team has been notified and will review your issue shortly.</p>
+                <p className="text-slate-500 dark:text-slate-400 mb-6">Thank you. The IT Hub team has been notified and will review your issue shortly.</p>
                 <button onClick={() => window.location.reload()} className="text-sm text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white underline">Submit another report</button>
             </div>
         </div>
@@ -142,8 +144,8 @@ const PublicReportIssue: React.FC = () => {
             <div className={`max-w-lg w-full bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden my-8 ${isSandbox ? 'mt-8' : ''}`}>
                 <div className="bg-slate-900 dark:bg-blue-600 p-6 text-white text-center">
                     <div className="flex justify-center mb-3"><AlertTriangle size={32} className="text-amber-400" /></div>
-                    <h1 className="text-xl font-bold">Report an Issue</h1>
-                    <p className="text-slate-300 dark:text-blue-100 text-sm mt-1">EatX IT Support Portal</p>
+                    <h1 className="text-xl font-bold">IT Hub Support</h1>
+                    <p className="text-slate-300 dark:text-blue-100 text-sm mt-1">EatX IT Issue Reporting Portal</p>
                 </div>
                 
                 <form onSubmit={handleSubmit} className="p-6 md:p-8 space-y-5">
