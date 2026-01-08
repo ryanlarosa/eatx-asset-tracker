@@ -16,7 +16,7 @@ const Settings: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState('');
   
   // Email Config State
-  const [emailConfig, setEmailConfig] = useState<EmailConfig>({ serviceId: '', templateId: '', publicKey: '', targetEmail: '', enabled: false });
+  const [emailConfig, setEmailConfig] = useState<EmailConfig>({ serviceId: '', templateId: '', confirmationTemplateId: '', publicKey: '', targetEmail: '', enabled: false });
   const [isSavingEmail, setIsSavingEmail] = useState(false);
   const [isTestingEmail, setIsTestingEmail] = useState(false);
 
@@ -135,24 +135,36 @@ const Settings: React.FC = () => {
   };
 
   const handleTestEmail = async () => {
-      if (!emailConfig.enabled || !emailConfig.serviceId) {
-          showError("Please enable and save configuration first.");
+      if (!emailConfig.enabled || !emailConfig.serviceId || !emailConfig.publicKey || !emailConfig.templateId) {
+          showError("Please complete all configuration fields and enable integration first.");
           return;
       }
       setIsTestingEmail(true);
       try {
-          // We assume config is saved, but we can also pass current state if we refactored service.
-          // For now, rely on saved config as per service architecture.
-          await saveEmailConfig(emailConfig); // Save first to ensure service uses latest
+          // Save first to ensure the service uses the latest values entered in the form
+          await saveEmailConfig(emailConfig); 
           
+          // Test IT Alert
           await sendSystemEmail(
-              "Test Notification", 
-              "This is a test email from your IT Hub System. If you are reading this, the integration is working correctly.",
-              window.location.href
+              "IT Hub: Integration Test (Alert)", 
+              "This is a test alert for your IT dashboard. Automation is active.",
+              window.location.origin
           );
-          showSuccess(`Test email sent to ${emailConfig.targetEmail}`);
+
+          // Test Confirmation if ID exists
+          if (emailConfig.confirmationTemplateId) {
+            await sendSystemEmail(
+                "IT Hub: Integration Test (Staff Confirmation)", 
+                "This is a test confirming that your staff will receive their ticket receipts correctly.",
+                window.location.origin,
+                emailConfig.targetEmail, // Use the manager email for both tests to verify
+                true
+            );
+          }
+          
+          showSuccess(`Test dispatched. Check ${emailConfig.targetEmail} shortly.`);
       } catch (e) {
-          showError("Failed to send test email. Check console.");
+          showError("Dispatch failed. Check console for EmailJS error logs.");
       } finally {
           setIsTestingEmail(false);
       }
@@ -307,7 +319,7 @@ const Settings: React.FC = () => {
       }
   };
 
-  const inputClass = "w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-950 text-slate-900 dark:text-white focus:ring-2 focus:ring-slate-900 dark:focus:ring-blue-600";
+  const inputClass = "w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-950 text-slate-900 dark:text-white focus:ring-2 focus:ring-slate-900 dark:focus:ring-blue-600 transition-all";
 
   if (!isAdmin && !isSandboxUser) {
       return (
@@ -319,7 +331,6 @@ const Settings: React.FC = () => {
       );
   }
 
-  // Sandbox Users can only see the Sandbox Toggle (locked to ON)
   if (isSandboxUser) {
       return (
          <div className="space-y-6">
@@ -394,12 +405,12 @@ const Settings: React.FC = () => {
           <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-900/30 flex items-start gap-3 mb-6">
               <Mail size={20} className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
               <div>
-                  <h4 className="text-sm font-bold text-blue-900 dark:text-blue-300">Email Alerts</h4>
+                  <h4 className="text-sm font-bold text-blue-900 dark:text-blue-300">Automated IT Alerts</h4>
                   <p className="text-xs text-blue-700 dark:text-blue-400 mt-1">
-                      Configure <a href="https://www.emailjs.com" target="_blank" rel="noreferrer" className="underline font-bold">EmailJS</a> to send real-time alerts for critical events (Ticket Created, Handover Signed).
+                      Configure <a href="https://www.emailjs.com" target="_blank" rel="noreferrer" className="underline font-bold">EmailJS</a> to send real-time alerts.
                   </p>
                   <p className="text-xs text-blue-600 dark:text-blue-500 mt-1">
-                      Template Variables: <span className="font-mono bg-blue-100 dark:bg-blue-900 px-1 rounded">{'{{title}}'}</span>, <span className="font-mono bg-blue-100 dark:bg-blue-900 px-1 rounded">{'{{message}}'}</span>, <span className="font-mono bg-blue-100 dark:bg-blue-900 px-1 rounded">{'{{link}}'}</span>, <span className="font-mono bg-blue-100 dark:bg-blue-900 px-1 rounded">{'{{date}}'}</span>
+                      Template Variables: <span className="font-mono bg-blue-100 dark:bg-blue-900 px-1 rounded">{'{{title}}'}</span>, <span className="font-mono bg-blue-100 dark:bg-blue-900 px-1 rounded">{'{{message}}'}</span>, <span className="font-mono bg-blue-100 dark:bg-blue-900 px-1 rounded">{'{{link}}'}</span>
                   </p>
               </div>
           </div>
@@ -407,33 +418,38 @@ const Settings: React.FC = () => {
           <form onSubmit={handleSaveEmailConfig} className="space-y-4">
               <div className="flex items-center gap-2 mb-2">
                   <input type="checkbox" id="emailEnabled" checked={emailConfig.enabled} onChange={e => setEmailConfig({...emailConfig, enabled: e.target.checked})} className="rounded border-slate-300" />
-                  <label htmlFor="emailEnabled" className="text-sm font-medium text-slate-700 dark:text-slate-300">Enable Email Notifications</label>
+                  <label htmlFor="emailEnabled" className="text-sm font-medium text-slate-700 dark:text-slate-300">Enable Automation</label>
               </div>
               
               <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${!emailConfig.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
                   <div>
-                      <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Service ID</label>
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1 uppercase">Service ID</label>
                       <input className={inputClass} value={emailConfig.serviceId} onChange={e => setEmailConfig({...emailConfig, serviceId: e.target.value})} placeholder="service_xxx" />
                   </div>
                   <div>
-                      <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Template ID</label>
-                      <input className={inputClass} value={emailConfig.templateId} onChange={e => setEmailConfig({...emailConfig, templateId: e.target.value})} placeholder="template_xxx" />
-                  </div>
-                  <div>
-                      <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Public Key</label>
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1 uppercase">Public Key (User ID)</label>
                       <input className={inputClass} value={emailConfig.publicKey} onChange={e => setEmailConfig({...emailConfig, publicKey: e.target.value})} placeholder="user_xxx" type="password" />
                   </div>
                   <div>
-                      <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Receiver Email (IT Manager)</label>
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1 uppercase">Manager Alert Template ID (IT Only)</label>
+                      <input className={inputClass} value={emailConfig.templateId} onChange={e => setEmailConfig({...emailConfig, templateId: e.target.value})} placeholder="template_alert_xxx" />
+                  </div>
+                  <div>
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1 uppercase">Staff Confirmation Template ID (Public)</label>
+                      <input className={inputClass} value={emailConfig.confirmationTemplateId || ''} onChange={e => setEmailConfig({...emailConfig, confirmationTemplateId: e.target.value})} placeholder="template_confirm_xxx" />
+                  </div>
+                  <div>
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1 uppercase">Alert Recipient (IT Manager)</label>
                       <input className={inputClass} value={emailConfig.targetEmail} onChange={e => setEmailConfig({...emailConfig, targetEmail: e.target.value})} placeholder="it@eatx.com" type="email" />
                   </div>
               </div>
-              <div className="flex justify-end gap-3">
-                  <button type="button" onClick={handleTestEmail} disabled={isTestingEmail || !emailConfig.enabled} className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50">
-                      {isTestingEmail ? <Loader2 className="animate-spin" size={16}/> : <Send size={16}/>} Test
+              <div className="flex justify-end gap-3 border-t border-slate-100 dark:border-slate-800 pt-4">
+                  <button type="button" onClick={handleTestEmail} disabled={isTestingEmail || !emailConfig.enabled} className="bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-5 py-2.5 rounded-xl text-sm font-bold border border-slate-200 dark:border-slate-700 flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 transition-all">
+                      {isTestingEmail ? <Loader2 className="animate-spin" size={16}/> : <Send size={16}/>} 
+                      {isTestingEmail ? 'Verifying Templates...' : 'Test Dual Templates'}
                   </button>
-                  <button type="submit" disabled={isSavingEmail} className="bg-slate-900 dark:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-black dark:hover:bg-blue-700 disabled:opacity-50">
-                      {isSavingEmail ? <Loader2 className="animate-spin" size={16}/> : <Save size={16}/>} Save Configuration
+                  <button type="submit" disabled={isSavingEmail} className="bg-slate-900 dark:bg-blue-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-black dark:hover:bg-blue-700 disabled:opacity-50 shadow-lg shadow-slate-900/10 dark:shadow-blue-900/20 transition-all">
+                      {isSavingEmail ? <Loader2 className="animate-spin" size={16}/> : <Save size={16}/>} Save Config
                   </button>
               </div>
           </form>
@@ -454,7 +470,7 @@ const Settings: React.FC = () => {
               
               <form onSubmit={handleCreateUser} className="flex flex-col md:flex-row gap-3 items-end">
                   <div className="flex-1 w-full">
-                      <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Email Address</label>
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1 uppercase">Email Address</label>
                       <input 
                         type="email" 
                         required 
@@ -465,7 +481,7 @@ const Settings: React.FC = () => {
                       />
                   </div>
                   <div className="flex-1 w-full">
-                      <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Password (min 6 chars)</label>
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1 uppercase">Password</label>
                       <input 
                         type="password" 
                         required 
@@ -476,7 +492,7 @@ const Settings: React.FC = () => {
                       />
                   </div>
                   <div className="w-full md:w-32">
-                      <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Role</label>
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1 uppercase">Role</label>
                       <select 
                         value={newUserRole}
                         onChange={e => setNewUserRole(e.target.value as UserRole)}

@@ -13,7 +13,8 @@ export interface UserProfile {
 
 export interface EmailConfig {
   serviceId: string;
-  templateId: string;
+  templateId: string; // The IT Alert Template
+  confirmationTemplateId?: string; // The Staff Receipt Template
   publicKey: string;
   targetEmail: string; // The IT Manager email that receives alerts
   enabled: boolean;

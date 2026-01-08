@@ -1,11 +1,7 @@
-import {
-  initializeApp,
-  getApps,
-  getApp,
-  deleteApp,
-  FirebaseApp,
-} from "firebase/app";
-// Fix: Separated value and type imports from firebase/firestore to resolve module resolution issues
+import { initializeApp, getApps, getApp, deleteApp } from "firebase/app";
+import type { FirebaseApp } from "firebase/app";
+
+// Fix: Separated value and type imports for Firestore to resolve "no exported member" errors during build/compilation
 import {
   getFirestore,
   collection,
@@ -29,14 +25,16 @@ import type {
   DocumentData,
 } from "firebase/firestore";
 
+// Fix: Separated value and type imports for Firebase Auth
 import {
   getAuth,
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
   createUserWithEmailAndPassword,
-  Auth,
 } from "firebase/auth";
+import type { Auth } from "firebase/auth";
+
 import {
   Asset,
   AssetLog,
@@ -334,11 +332,21 @@ export const sendSystemEmail = async (
   subject: string,
   message: string,
   link: string = "",
-  specificRecipient?: string
+  specificRecipient?: string,
+  useConfirmationTemplate: boolean = false
 ) => {
   try {
     const config = await getEmailConfig();
-    if (!config || !config.enabled || !config.serviceId) return;
+    if (!config || !config.enabled || !config.serviceId) {
+      console.log("Email skipped: Integration not configured or disabled.");
+      return;
+    }
+
+    // Determine which template to use
+    const activeTemplate =
+      useConfirmationTemplate && config.confirmationTemplateId
+        ? config.confirmationTemplateId
+        : config.templateId;
 
     const templateParams = {
       to_email: specificRecipient || config.targetEmail,
@@ -348,14 +356,22 @@ export const sendSystemEmail = async (
       date: new Date().toLocaleString(),
     };
 
-    await emailjs.send(
+    console.log(
+      `Attempting to send email to ${templateParams.to_email} using template ${activeTemplate}...`
+    );
+    const response = await emailjs.send(
       config.serviceId,
-      config.templateId,
+      activeTemplate,
       templateParams,
       config.publicKey
     );
+    console.log(
+      "Email successfully dispatched:",
+      response.status,
+      response.text
+    );
   } catch (e) {
-    console.warn("Non-blocking email send failed:", e);
+    console.warn("Non-blocking automated email failed to send:", e);
   }
 };
 
@@ -630,20 +646,33 @@ export const createAssetRequest = async (req: Partial<AssetRequest>) => {
   // PRIMARY ACTION: Must succeed
   await addDoc(collection(db, getColName("requests")), sanitizeData(newReq));
 
-  // SECONDARY ACTIONS: Non-blocking
+  // SECONDARY ACTIONS: Non-blocking but awaited to ensure completion
   try {
-    createNotification(
+    // 1. Dashboard Notification
+    await createNotification(
       "info",
       "IT Hub: New Request",
       `${req.requesterName} requested a ${req.category} for ${req.department}.`,
       "/requests"
     );
 
-    sendSystemEmail(
+    // 2. Alert to IT Manager (Alert Template)
+    await sendSystemEmail(
       "IT Hub: New Asset Request",
-      `${req.requesterName} has submitted a new request for ${req.category}.`,
+      `${req.requesterName} has submitted a new request for ${req.category}. Reference: ${requestNumber}`,
       window.location.origin + "/#/requests"
     );
+
+    // 3. Confirmation to Staff (Confirmation Template)
+    if (req.requesterEmail) {
+      await sendSystemEmail(
+        "Request Received: EatX IT Hub",
+        `Hello ${req.requesterName}, your request for a ${req.category} has been received. Your tracking reference is: ${requestNumber}`,
+        window.location.origin + "/#/track",
+        req.requesterEmail,
+        true // Use the confirmation template override
+      );
+    }
   } catch (e) {
     console.warn("Secondary request notifications failed:", e);
   }
@@ -721,20 +750,33 @@ export const createIncidentReport = async (report: Partial<IncidentReport>) => {
     sanitizeData(newReport)
   );
 
-  // SECONDARY ACTIONS
+  // SECONDARY ACTIONS: Await to ensure they fire, but keep inside try-catch
   try {
-    createNotification(
+    // 1. Dashboard Notification
+    await createNotification(
       "warning",
       "IT Hub: New Incident",
       `${report.reportedBy} reported an issue at ${report.location}.`,
       "/repairs"
     );
 
-    sendSystemEmail(
+    // 2. Alert to IT Manager
+    await sendSystemEmail(
       "IT Hub: New Incident Report",
-      `${report.reportedBy} reported: ${report.description}`,
+      `${report.reportedBy} reported: ${report.description}. Reference: ${ticketNumber}`,
       window.location.origin + "/#/repairs"
     );
+
+    // 3. Confirmation to Staff
+    if (report.reporterEmail) {
+      await sendSystemEmail(
+        "Incident Reported: EatX IT Hub",
+        `Hello ${report.reportedBy}, your issue at ${report.location} has been registered. Your tracking reference is: ${ticketNumber}`,
+        window.location.origin + "/#/track",
+        report.reporterEmail,
+        true // Use the confirmation template override
+      );
+    }
   } catch (e) {
     console.warn("Secondary incident notifications failed:", e);
   }
