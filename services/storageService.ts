@@ -5,6 +5,7 @@ import {
   deleteApp,
   FirebaseApp,
 } from "firebase/app";
+// Fix: Separated value and type imports from firebase/firestore to resolve module resolution issues
 import {
   getFirestore,
   collection,
@@ -21,10 +22,13 @@ import {
   orderBy,
   limit,
   writeBatch,
+} from "firebase/firestore";
+import type {
   Firestore,
   QuerySnapshot,
   DocumentData,
 } from "firebase/firestore";
+
 import {
   getAuth,
   signInWithEmailAndPassword,
@@ -129,14 +133,18 @@ export const createNotification = async (
   message: string,
   link: string = ""
 ) => {
-  await addDoc(collection(db, getColName("notifications")), {
-    type,
-    title,
-    message,
-    timestamp: new Date().toISOString(),
-    read: false,
-    link,
-  });
+  try {
+    await addDoc(collection(db, getColName("notifications")), {
+      type,
+      title,
+      message,
+      timestamp: new Date().toISOString(),
+      read: false,
+      link,
+    });
+  } catch (e) {
+    console.warn("Silent failure creating dashboard notification:", e);
+  }
 };
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -191,17 +199,12 @@ onAuthStateChanged(auth, async (firebaseUser) => {
         // AUTO-SWITCH BASED ON ROLE
         if (currentUserProfile.role === "sandbox_user") {
           if (!currentSandboxState) {
-            console.log(
-              "Sandbox user detected. Auto-switching to Sandbox Mode."
-            );
             localStorage.setItem("eatx_sandbox", "true");
             window.location.reload();
             return;
           }
         } else {
-          // Normal users (Admin, Tech, Viewer) should default back to Live if they were previously in sandbox
           if (currentSandboxState) {
-            console.log("Normal user detected. Returning to Live Mode.");
             localStorage.setItem("eatx_sandbox", "false");
             window.location.reload();
             return;
@@ -221,7 +224,6 @@ onAuthStateChanged(auth, async (firebaseUser) => {
         currentUserProfile = newProfile;
       }
     } catch (e) {
-      console.error("Error fetching user profile", e);
       currentUserProfile = {
         uid: firebaseUser.uid,
         email: firebaseUser.email || "",
@@ -334,18 +336,18 @@ export const sendSystemEmail = async (
   link: string = "",
   specificRecipient?: string
 ) => {
-  const config = await getEmailConfig();
-  if (!config || !config.enabled || !config.serviceId) return;
-
-  const templateParams = {
-    to_email: specificRecipient || config.targetEmail,
-    title: subject,
-    message: message,
-    link: link,
-    date: new Date().toLocaleString(),
-  };
-
   try {
+    const config = await getEmailConfig();
+    if (!config || !config.enabled || !config.serviceId) return;
+
+    const templateParams = {
+      to_email: specificRecipient || config.targetEmail,
+      title: subject,
+      message: message,
+      link: link,
+      date: new Date().toLocaleString(),
+    };
+
     await emailjs.send(
       config.serviceId,
       config.templateId,
@@ -353,7 +355,7 @@ export const sendSystemEmail = async (
       config.publicKey
     );
   } catch (e) {
-    console.error("Email send failed", e);
+    console.warn("Non-blocking email send failed:", e);
   }
 };
 
@@ -388,16 +390,17 @@ export const saveAsset = async (asset: Asset) => {
     sanitizeData(finalAsset)
   );
 
-  // Log change - using 'logs' collection as per original check-this-one
-  await addDoc(collection(db, getColName("logs")), {
-    assetId,
-    action: isNew ? "Created" : "Updated",
-    details: isNew
-      ? `Asset ${asset.name} onboarded.`
-      : `Asset ${asset.name} updated manually.`,
-    performedBy: currentUserProfile?.email || "System",
-    timestamp: new Date().toISOString(),
-  });
+  try {
+    await addDoc(collection(db, getColName("logs")), {
+      assetId,
+      action: isNew ? "Created" : "Updated",
+      details: isNew
+        ? `Asset ${asset.name} onboarded.`
+        : `Asset ${asset.name} updated manually.`,
+      performedBy: currentUserProfile?.email || "System",
+      timestamp: new Date().toISOString(),
+    });
+  } catch (e) {}
 };
 
 export const deleteAsset = async (id: string) => {
@@ -623,20 +626,27 @@ export const createAssetRequest = async (req: Partial<AssetRequest>) => {
     status: "New",
     createdAt: new Date().toISOString(),
   };
+
+  // PRIMARY ACTION: Must succeed
   await addDoc(collection(db, getColName("requests")), sanitizeData(newReq));
 
-  await createNotification(
-    "info",
-    "IT Hub: New Request",
-    `${req.requesterName} requested a ${req.category} for ${req.department}.`,
-    "/requests"
-  );
+  // SECONDARY ACTIONS: Non-blocking
+  try {
+    createNotification(
+      "info",
+      "IT Hub: New Request",
+      `${req.requesterName} requested a ${req.category} for ${req.department}.`,
+      "/requests"
+    );
 
-  await sendSystemEmail(
-    "IT Hub: New Asset Request",
-    `${req.requesterName} has submitted a new request for ${req.category}.`,
-    window.location.origin + "/#/requests"
-  );
+    sendSystemEmail(
+      "IT Hub: New Asset Request",
+      `${req.requesterName} has submitted a new request for ${req.category}.`,
+      window.location.origin + "/#/requests"
+    );
+  } catch (e) {
+    console.warn("Secondary request notifications failed:", e);
+  }
 };
 
 export const updateAssetRequest = async (
@@ -704,23 +714,30 @@ export const createIncidentReport = async (report: Partial<IncidentReport>) => {
     status: "New",
     createdAt: new Date().toISOString(),
   };
+
+  // PRIMARY ACTION
   await addDoc(
     collection(db, getColName("incidents")),
     sanitizeData(newReport)
   );
 
-  await createNotification(
-    "warning",
-    "IT Hub: New Incident",
-    `${report.reportedBy} reported an issue at ${report.location}.`,
-    "/repairs"
-  );
+  // SECONDARY ACTIONS
+  try {
+    createNotification(
+      "warning",
+      "IT Hub: New Incident",
+      `${report.reportedBy} reported an issue at ${report.location}.`,
+      "/repairs"
+    );
 
-  await sendSystemEmail(
-    "IT Hub: New Incident Report",
-    `${report.reportedBy} reported: ${report.description}`,
-    window.location.origin + "/#/repairs"
-  );
+    sendSystemEmail(
+      "IT Hub: New Incident Report",
+      `${report.reportedBy} reported: ${report.description}`,
+      window.location.origin + "/#/repairs"
+    );
+  } catch (e) {
+    console.warn("Secondary incident notifications failed:", e);
+  }
 };
 
 export const updateIncidentReport = async (
@@ -869,7 +886,6 @@ export const createPendingHandover = async (
     type,
     targetName,
   };
-  // CRITICAL FIX: Sanitize before write to remove potential 'undefined' targetName
   await setDoc(
     doc(db, getColName("pendingHandovers"), id),
     sanitizeData(pending)
@@ -925,12 +941,14 @@ export const completePendingHandover = async (
       ? `${data.employeeName} has provided their return signature. IT Hub verification required.`
       : `${data.employeeName} has digitally signed for ${data.assetsSnapshot.length} assets. IT Hub Updated.`;
 
-  await createNotification(
-    handoverType === "Return" ? "info" : "success",
-    "IT Hub: Signature Received",
-    msg,
-    "/staff"
-  );
+  try {
+    await createNotification(
+      handoverType === "Return" ? "info" : "success",
+      "IT Hub: Signature Received",
+      msg,
+      "/staff"
+    );
+  } catch (e) {}
 };
 
 // --- PUBLIC TRACKING ---
