@@ -1,5 +1,7 @@
 {
   "name": "IT Hub",
   "description": "A comprehensive IT management ecosystem for F&B operations. Centralizing assets, requests, repairs, procurement, and task management.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "camera"
+  ]
 }

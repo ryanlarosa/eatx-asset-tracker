@@ -72,13 +72,19 @@ export const parseAssetDescription = async (text: string): Promise<Partial<any>>
       },
     });
 
+    // Safely extract text output from response
     const jsonStr = response.text?.trim();
     if (jsonStr) {
-      const data = JSON.parse(jsonStr);
-      return {
-        ...data,
-        id: generateId(),
-      };
+      try {
+        const data = JSON.parse(jsonStr);
+        return {
+          ...data,
+          id: generateId(),
+        };
+      } catch (parseErr) {
+        console.error("Failed to parse Gemini JSON output:", parseErr);
+        throw new Error("Invalid response format from AI.");
+      }
     }
     return {};
   } catch (error) {

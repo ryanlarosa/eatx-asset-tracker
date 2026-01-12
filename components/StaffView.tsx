@@ -261,62 +261,147 @@ const StaffView: React.FC = () => {
   };
 
   const handlePrintDocument = (doc: HandoverDocument) => {
-    // Logic for printing remains the same as provided in previous context
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
-    const dateStr = new Date(doc.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    
+    const dateFormatted = new Date(doc.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    const timestamp = new Date(doc.date).toLocaleString('en-US', { hour12: true });
+    
     const docTitle = doc.type === 'Return' ? 'ASSET RETURN FORM' : doc.type === 'Transfer' ? 'ASSET TRANSFER ACKNOWLEDGEMENT' : 'ASSET HANDOVER FORM';
     const declaration = doc.type === 'Return' 
       ? `I, <b>${doc.employeeName}</b>, confirm the return of the following company assets.`
-      : `I, <b>${doc.employeeName}</b>, acknowledge receipt/transfer of the following company assets.`;
+      : `I, <b>${doc.employeeName}</b>, acknowledge receipt/transfer of the following company assets. I agree to use them for company business and maintain them in good condition.`;
 
-    const empSig = doc.signatureBase64 ? `<img src="${doc.signatureBase64}" class="signature-img" />` : '<div style="height:60px; color:#ccc; line-height:60px;">Pending Signature</div>';
-    const itSig = doc.itSignatureBase64 ? `<img src="${doc.itSignatureBase64}" class="signature-img" />` : '<div style="height:60px; color:#ccc; line-height:60px;">Awaiting IT Verification</div>';
-    
-    let signatureBlock = doc.type === 'Return' ? `
-      <div class="sig-section">
-          <div class="sig-box">${empSig}<div class="sig-label"><strong>Employee:</strong> ${doc.employeeName}</div></div>
-          <div class="sig-box">${itSig}<div class="sig-label"><strong>Verified By:</strong> IT Department</div></div>
-      </div>
-    ` : `
-      <div class="sig-section">
-          <div class="sig-box">${empSig}<div class="sig-label"><strong>Acknowledged by:</strong> ${doc.employeeName}</div></div>
-      </div>
-    `;
-
-    const isCompleted = doc.status === 'Completed';
-    const statusLabel = isCompleted ? 'COMPLETED' : (doc.type === 'Return' ? 'PENDING VERIFICATION' : 'PENDING');
-    const statusColor = isCompleted ? '#059669' : '#d97706';
+    const statusLabel = doc.status?.toUpperCase() || 'PENDING';
+    const statusColor = doc.status === 'Completed' ? '#059669' : '#d97706';
 
     const htmlContent = `
+      <!DOCTYPE html>
       <html>
-      <head><style>
-          body { font-family: sans-serif; padding: 40px; color: #111; line-height: 1.4; }
-          .doc-title { font-size: 20pt; font-weight: 800; border-bottom: 3px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
-          .meta { margin-bottom: 30px; }
-          .declaration { background: #f8fafc; padding: 20px; border-left: 4px solid #000; margin-bottom: 30px; font-style: italic; }
-          table { width: 100%; border-collapse: collapse; margin-bottom: 40px; }
-          th { text-align: left; padding: 10px; border: 1px solid #ddd; background: #eee; }
-          td { padding: 10px; border: 1px solid #ddd; }
-          .sig-section { display: flex; gap: 40px; margin-top: 40px; }
-          .sig-box { flex: 1; border-top: 1px solid #000; padding-top: 10px; }
-          .signature-img { max-height: 50px; }
-      </style></head>
+      <head>
+          <style>
+              body { font-family: 'Inter', -apple-system, sans-serif; color: #1e293b; padding: 40px; line-height: 1.6; max-width: 850px; margin: 0 auto; }
+              
+              /* Header Section */
+              .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; border-bottom: 1px solid #e2e8f0; padding-bottom: 20px; }
+              .logo-side { display: flex; flex-direction: column; }
+              .logo-main { font-size: 32pt; font-weight: 900; line-height: 1; margin: 0; color: #0f172a; letter-spacing: -2px; }
+              .logo-sub { font-size: 9pt; font-weight: 700; text-transform: uppercase; letter-spacing: 2.5px; color: #64748b; margin-top: 5px; }
+              
+              .company-info { text-align: right; font-size: 8.5pt; color: #475569; }
+              .company-name { font-weight: 800; font-size: 11pt; color: #0f172a; margin-bottom: 4px; }
+              
+              /* Document Title */
+              .doc-title { font-size: 24pt; font-weight: 800; border-bottom: 4px solid #000; display: inline-block; margin-bottom: 30px; padding-bottom: 5px; }
+              
+              /* Info Grid */
+              .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border-top: 1px solid #e2e8f0; margin-bottom: 40px; }
+              .info-item { display: flex; padding: 12px 0; border-bottom: 1px solid #e2e8f0; }
+              .info-label { width: 140px; font-size: 10pt; font-weight: 700; color: #64748b; }
+              .info-value { font-size: 10pt; font-weight: 600; color: #0f172a; }
+              .status-val { font-weight: 900; color: ${statusColor}; letter-spacing: 0.5px; }
+              
+              /* Declaration Block */
+              .declaration-container { display: flex; margin-bottom: 40px; padding: 10px 0; }
+              .declaration-bracket { border-left: 4px solid #000; width: 10px; border-radius: 8px 0 0 8px; margin-right: 20px; }
+              .declaration-text { font-style: italic; font-size: 11pt; color: #334155; }
+              
+              /* Asset Table */
+              table { width: 100%; border-collapse: collapse; margin-bottom: 50px; }
+              th { text-align: left; padding: 12px 15px; border: 1px solid #e2e8f0; background: #f8fafc; font-size: 8.5pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; }
+              td { padding: 15px; border: 1px solid #e2e8f0; font-size: 10pt; color: #0f172a; }
+              .col-hash { width: 40px; text-align: center; color: #94a3b8; }
+              .col-serial { font-family: 'Courier New', Courier, monospace; font-weight: 600; }
+              
+              /* Signature Section */
+              .footer-rule { border-top: 2px solid #0f172a; margin-top: 60px; padding-top: 20px; }
+              .signature-img { max-height: 55px; margin-bottom: 15px; display: block; mix-blend-mode: multiply; }
+              .acknowledged-text { font-size: 10pt; font-weight: 800; margin: 0; }
+              .signed-timestamp { font-size: 8.5pt; font-family: 'Courier New', Courier, monospace; color: #64748b; margin-top: 4px; }
+              
+              /* Disclaimer */
+              .disclaimer { margin-top: 80px; text-align: center; font-size: 8pt; color: #94a3b8; font-style: italic; }
+              
+              @media print {
+                  body { padding: 20px; }
+                  .header { margin-bottom: 20px; }
+                  @page { margin: 1cm; }
+              }
+          </style>
+      </head>
       <body>
-          <div class="doc-title">${docTitle}</div>
-          <div class="meta">
-              <strong>Employee:</strong> ${doc.employeeName}<br>
-              <strong>Date:</strong> ${dateStr}<br>
-              <strong>Status:</strong> <span style="color:${statusColor}">${statusLabel}</span>
+          <div class="header">
+              <div class="logo-side">
+                  <h1 class="logo-main">eatx.</h1>
+                  <span class="logo-sub">IT HUB OPERATIONS</span>
+              </div>
+              <div class="company-info">
+                  <div class="company-name">EatX Facilities Management LLC</div>
+                  Office No. 2005-06, Burj Al Salam Building No. 2735391504,<br>
+                  Sheikh Zayed Road, Trade Centre First,<br>
+                  Dubai, United Arab Emirates, 122500<br>
+                  Tel: +971 4229 5775 • TRN: 100558980700003
+              </div>
           </div>
-          <div class="declaration">${declaration}</div>
+
+          <div class="doc-title">${docTitle}</div>
+
+          <div class="info-grid">
+              <div class="info-item">
+                  <span class="info-label">Employee Name:</span>
+                  <span class="info-value">${doc.employeeName}</span>
+              </div>
+              <div class="info-item">
+                  <span class="info-label">Date:</span>
+                  <span class="info-value">${dateFormatted}</span>
+              </div>
+              <div class="info-item">
+                  <span class="info-label">Document ID:</span>
+                  <span class="info-value">${doc.id}</span>
+              </div>
+              <div class="info-item">
+                  <span class="info-label">Status:</span>
+                  <span class="info-value status-val">${statusLabel}</span>
+              </div>
+          </div>
+
+          <div class="declaration-container">
+              <div class="declaration-bracket"></div>
+              <div class="declaration-text">${declaration}</div>
+          </div>
+
           <table>
-              <thead><tr><th>#</th><th>Asset</th><th>Serial</th></tr></thead>
-              <tbody>${doc.assets.map((a, i) => `<tr><td>${i+1}</td><td>${a.name}</td><td>${a.serialNumber||'N/A'}</td></tr>`).join('')}</tbody>
+              <thead>
+                  <tr>
+                      <th class="col-hash">#</th>
+                      <th>ASSET NAME / DESCRIPTION</th>
+                      <th>SERIAL NUMBER</th>
+                  </tr>
+              </thead>
+              <tbody>
+                  ${doc.assets.map((a, i) => `
+                    <tr>
+                        <td class="col-hash">${i + 1}</td>
+                        <td style="font-weight:700;">${a.name}</td>
+                        <td class="col-serial">${a.serialNumber || 'N/A'}</td>
+                    </tr>
+                  `).join('')}
+              </tbody>
           </table>
-          ${signatureBlock}
-          <script>window.onload=function(){window.print();}</script>
-      </body></html>
+
+          <div class="footer-rule">
+              ${doc.signatureBase64 ? `<img src="${doc.signatureBase64}" class="signature-img" />` : '<div style="height:60px;"></div>'}
+              <p class="acknowledged-text">Acknowledged by: ${doc.employeeName}</p>
+              <p class="signed-timestamp">Digitally Signed: ${timestamp}</p>
+          </div>
+
+          <div class="disclaimer">
+              This document is generated through EatX IT Hub
+          </div>
+
+          <script>window.onload = function() { window.print(); }</script>
+      </body>
+      </html>
     `;
     printWindow.document.write(htmlContent);
     printWindow.document.close();

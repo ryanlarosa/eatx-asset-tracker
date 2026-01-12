@@ -173,3 +173,17 @@ export interface Project {
   status: 'Planning' | 'In Progress' | 'Completed';
   items: ProjectItem[];
 }
+
+/**
+ * Added PublicStatusResult interface for tracking tickets and requests.
+ */
+export interface PublicStatusResult {
+  id: string;
+  type: "Ticket" | "Request";
+  status: string;
+  subject: string;
+  details: string;
+  created: string;
+  updated?: string;
+  notes?: string;
+}
