@@ -37,19 +37,33 @@ export const deletePendingHandover = async (id: string) => deleteDoc(doc(db, get
 
 export const completePendingHandover = async (id: string, signature: string) => {
   const snap = await getDoc(doc(db, getColName("pendingHandovers"), id));
-  if (!snap.exists()) throw new Error("Link invalid");
+  if (!snap.exists()) throw new Error("This signing link is no longer valid or has been revoked.");
+  
   const data = snap.data() as PendingHandover;
   const docId = `doc-${Math.random().toString(36).substr(2, 9)}`;
-  const handoverDoc: HandoverDocument = { id: docId, employeeName: data.employeeName, assets: data.assetsSnapshot, signatureBase64: signature, date: new Date().toISOString(), type: data.type, status: data.type === "Return" ? "Pending" : "Completed" };
+  const handoverDoc: HandoverDocument = { 
+    id: docId, 
+    employeeName: data.employeeName, 
+    assets: data.assetsSnapshot, 
+    signatureBase64: signature, 
+    date: new Date().toISOString(), 
+    type: data.type, 
+    status: data.type === "Return" ? "Pending" : "Completed" 
+  };
   
   const batch = writeBatch(db);
   batch.set(doc(db, getColName("documents"), docId), sanitizeData(handoverDoc));
   batch.update(doc(db, getColName("pendingHandovers"), id), { status: "Completed" });
   
-  if (data.type === "Handover") {
-    bulkAssignAssetsInternal(batch, data.assetIds, data.employeeName, docId, "User Signed");
-  } else if (data.type === "Transfer" && data.targetName) {
-    bulkTransferAssetsInternal(batch, data.assetIds, data.targetName, docId, "User Signed");
+  // Robust fallback for legacy records that might be missing the explicit assetIds array
+  const assetIds = data.assetIds || (data.assetsSnapshot ? data.assetsSnapshot.map(a => a.id) : []);
+  
+  if (assetIds.length > 0) {
+    if (data.type === "Handover") {
+      bulkAssignAssetsInternal(batch, assetIds, data.employeeName, docId, "User Signed");
+    } else if (data.type === "Transfer" && data.targetName) {
+      bulkTransferAssetsInternal(batch, assetIds, data.targetName, docId, "User Signed");
+    }
   }
   
   await batch.commit();

@@ -68,24 +68,30 @@ export const getStats = (assets: Asset[]): AssetStats => {
 
 // Internal helpers for transactions
 export const bulkAssignAssetsInternal = (batch: any, assetIds: string[], employeeName: string, docId: string, performer: string) => {
+  if (!Array.isArray(assetIds)) return;
   const timestamp = new Date().toISOString();
   assetIds.forEach((id) => {
+    if (!id) return;
     batch.update(doc(db, getColName("assets"), id), { assignedEmployee: employeeName, status: "Active", lastUpdated: timestamp });
     batch.set(doc(collection(db, getColName("logs"))), { assetId: id, action: "Assigned", details: `Assigned to ${employeeName}. Doc: ${docId}`, performedBy: performer, timestamp, documentId: docId });
   });
 };
 
 export const bulkReturnAssetsInternal = (batch: any, assetIds: string[], docId: string, performer: string) => {
+  if (!Array.isArray(assetIds)) return;
   const timestamp = new Date().toISOString();
   assetIds.forEach((id) => {
+    if (!id) return;
     batch.update(doc(db, getColName("assets"), id), { assignedEmployee: "", status: "In Storage", lastUpdated: timestamp });
     batch.set(doc(collection(db, getColName("logs"))), { assetId: id, action: "Returned", details: `Returned to storage. Doc: ${docId}`, performedBy: performer, timestamp, documentId: docId });
   });
 };
 
 export const bulkTransferAssetsInternal = (batch: any, assetIds: string[], targetName: string, docId: string, performer: string) => {
+  if (!Array.isArray(assetIds)) return;
   const timestamp = new Date().toISOString();
   assetIds.forEach((id) => {
+    if (!id) return;
     batch.update(doc(db, getColName("assets"), id), { assignedEmployee: targetName, lastUpdated: timestamp });
     batch.set(doc(collection(db, getColName("logs"))), { assetId: id, action: "Transferred", details: `Transferred to ${targetName}. Doc: ${docId}`, performedBy: performer, timestamp, documentId: docId });
   });

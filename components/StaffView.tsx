@@ -50,7 +50,7 @@ const StaffView: React.FC = () => {
   }>({ isOpen: false, type: 'Handover', employeeName: '', assets: [] });
 
   const currentUser = getCurrentUserProfile();
-  const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'technician';
+  const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'technician' || currentUser?.role === 'sandbox_user';
 
   useEffect(() => {
     const unsubscribe = listenToAssets((data) => {

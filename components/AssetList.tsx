@@ -1,9 +1,8 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Asset, ASSET_STATUSES, AssetStatus } from '../types';
-// Added ShoppingCart to the lucide-react imports to fix 'Cannot find name ShoppingCart'
-import { Edit2, Trash2, Search, MapPin, Tag, User, Upload, Loader2, AlertTriangle, Lock, Copy, Building2, ShoppingBag, Calendar, Columns, Check, RefreshCw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileSpreadsheet, FileOutput, QrCode, X, CheckCircle2, ShoppingCart } from 'lucide-react';
-import { importAssetsBulk, getAppConfig, getCurrentUserProfile } from '../services/storageService';
+import { Edit2, Trash2, Search, MapPin, Tag, User, Upload, AlertTriangle, Lock, Building2, Columns, Check, RefreshCw, ChevronLeft, ChevronRight, FileSpreadsheet, FileOutput, QrCode, X, CheckCircle2, Copy, ChevronsLeft, ChevronsRight, ShoppingCart, Loader2 } from 'lucide-react';
+import { importAssetsBulk, getAppConfig, getCurrentUserProfile, getSandboxStatus } from '../services/storageService';
 import ExcelJS from 'exceljs';
 import QRCode from 'react-qr-code';
 import ReactDOMServer from 'react-dom/server';
@@ -15,7 +14,7 @@ interface AssetListProps {
   onDelete: (id: string) => void;
 }
 
-type ColumnId = 'serialNumber' | 'category' | 'location' | 'department' | 'assignedEmployee' | 'status' | 'supplier' | 'purchaseCost' | 'purchaseDate';
+type ColumnId = 'serialNumber' | 'category' | 'status' | 'location' | 'department' | 'assignedEmployee' | 'purchaseCost';
 
 interface ColumnConfig {
     id: ColumnId;
@@ -24,19 +23,16 @@ interface ColumnConfig {
 }
 
 const AVAILABLE_COLUMNS: ColumnConfig[] = [
-    { id: 'serialNumber', label: 'Serial No.', defaultVisible: true },
-    { id: 'category', label: 'Category', defaultVisible: true },
-    { id: 'location', label: 'Location', defaultVisible: true },
-    { id: 'department', label: 'Department', defaultVisible: false },
-    { id: 'assignedEmployee', label: 'Assigned To', defaultVisible: true },
-    { id: 'status', label: 'Status', defaultVisible: true },
-    { id: 'supplier', label: 'Supplier', defaultVisible: false },
-    { id: 'purchaseCost', label: 'Cost', defaultVisible: false },
-    { id: 'purchaseDate', label: 'Purchase Date', defaultVisible: false },
+    { id: 'serialNumber', label: 'SERIAL NO.', defaultVisible: true },
+    { id: 'category', label: 'CATEGORY', defaultVisible: true },
+    { id: 'status', label: 'STATUS', defaultVisible: true },
+    { id: 'location', label: 'LOCATION', defaultVisible: true },
+    { id: 'department', label: 'DEPARTMENT', defaultVisible: true },
+    { id: 'assignedEmployee', label: 'ASSIGNED TO', defaultVisible: true },
+    { id: 'purchaseCost', label: 'COST', defaultVisible: true },
 ];
 
 const AssetList: React.FC<AssetListProps> = ({ assets, onEdit, onDuplicate, onDelete }) => {
-  // Filter States
   const [searchTerm, setSearchTerm] = useState(() => localStorage.getItem('eatx_filter_search') || '');
   const [filterStatus, setFilterStatus] = useState<string>(() => localStorage.getItem('eatx_filter_status') || 'All');
   const [filterCategory, setFilterCategory] = useState<string>(() => localStorage.getItem('eatx_filter_category') || 'All');
@@ -45,11 +41,9 @@ const AssetList: React.FC<AssetListProps> = ({ assets, onEdit, onDuplicate, onDe
   const [filterEmployee, setFilterEmployee] = useState(() => localStorage.getItem('eatx_filter_employee') || '');
   const [filterSupplier, setFilterSupplier] = useState(() => localStorage.getItem('eatx_filter_supplier') || '');
 
-  // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  // Column Visibility State
   const [visibleColumns, setVisibleColumns] = useState<Record<ColumnId, boolean>>(() => {
       const saved = localStorage.getItem('eatx_table_columns');
       if (saved) return JSON.parse(saved);
@@ -59,20 +53,17 @@ const AssetList: React.FC<AssetListProps> = ({ assets, onEdit, onDuplicate, onDe
   });
   const [showColumnMenu, setShowColumnMenu] = useState(false);
   const columnMenuRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // General State
   const [isImporting, setIsImporting] = useState(false);
   const [showImportSuccess, setShowImportSuccess] = useState<number | null>(null);
-  const [assetToDelete, setAssetToDelete] = useState<Asset | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
   const [locations, setLocations] = useState<string[]>([]);
   const [departments, setDepartments] = useState<string[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Role Checks
   const user = getCurrentUserProfile();
-  const canEdit = user?.role === 'admin' || user?.role === 'technician';
-  const canDelete = user?.role === 'admin';
+  const canEdit = user?.role === 'admin' || user?.role === 'technician' || user?.role === 'sandbox_user';
+  const isSandbox = getSandboxStatus();
 
   useEffect(() => {
     const loadConfig = async () => {
@@ -103,30 +94,19 @@ const AssetList: React.FC<AssetListProps> = ({ assets, onEdit, onDuplicate, onDe
     setCurrentPage(1);
   }, [searchTerm, filterStatus, filterCategory, filterLocation, filterSerial, filterEmployee, filterSupplier]);
 
-  useEffect(() => {
-      localStorage.setItem('eatx_table_columns', JSON.stringify(visibleColumns));
-  }, [visibleColumns]);
-
   const filteredAssets = useMemo(() => {
     return assets.filter(asset => {
         const matchesSearch = asset.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                               asset.description?.toLowerCase().includes(searchTerm.toLowerCase());
-        
         const matchesStatus = filterStatus === 'All' || asset.status === filterStatus;
         const matchesCategory = filterCategory === 'All' || asset.category === filterCategory;
         const matchesLocation = filterLocation === 'All' || asset.location === filterLocation;
         const matchesSerial = filterSerial === '' || (asset.serialNumber && asset.serialNumber.toLowerCase().includes(filterSerial.toLowerCase()));
         const matchesEmployee = filterEmployee === '' || (asset.assignedEmployee && asset.assignedEmployee.toLowerCase().includes(filterEmployee.toLowerCase()));
         const matchesSupplier = filterSupplier === '' || (asset.supplier && asset.supplier.toLowerCase().includes(filterSupplier.toLowerCase()));
-
         return matchesSearch && matchesStatus && matchesCategory && matchesLocation && matchesSerial && matchesEmployee && matchesSupplier;
     });
   }, [assets, searchTerm, filterStatus, filterCategory, filterLocation, filterSerial, filterEmployee, filterSupplier]);
-
-  const clearFilters = () => {
-      setSearchTerm(''); setFilterStatus('All'); setFilterCategory('All'); setFilterLocation('All');
-      setFilterSerial(''); setFilterEmployee(''); setFilterSupplier('');
-  };
 
   const totalPages = Math.ceil(filteredAssets.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -134,63 +114,11 @@ const AssetList: React.FC<AssetListProps> = ({ assets, onEdit, onDuplicate, onDe
   const paginatedAssets = filteredAssets.slice(startIndex, endIndex);
 
   const toggleColumn = (id: ColumnId) => {
-      setVisibleColumns(prev => ({ ...prev, [id]: !prev[id] }));
+      const updated = { ...visibleColumns, [id]: !visibleColumns[id] };
+      setVisibleColumns(updated);
+      localStorage.setItem('eatx_table_columns', JSON.stringify(updated));
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Active': return 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800';
-      case 'Under Repair': return 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-emerald-800';
-      case 'Retired': return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-slate-800';
-      case 'In Storage': return 'bg-slate-100 text-slate-800 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700';
-      case 'Lost/Stolen': return 'bg-gray-800 text-white border-gray-700 dark:bg-gray-700 dark:border-gray-600';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-  };
-
-  const handlePrintLabel = (asset: Asset) => {
-    const printWindow = window.open('', '_blank', 'width=400,height=300');
-    if (!printWindow) return;
-    const deepLinkUrl = `${window.location.origin}${window.location.pathname}#/assets?id=${asset.id}`;
-    const qrHtml = ReactDOMServer.renderToString(<QRCode value={deepLinkUrl} size={90} level="M" />);
-
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Asset Tag - ${asset.id}</title>
-        <style>
-          body { font-family: 'Arial', sans-serif; margin: 0; padding: 5px; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
-          .label { border: 2px solid #000; padding: 10px; width: 300px; height: 160px; display: flex; gap: 15px; align-items: center; box-sizing: border-box; border-radius: 8px; }
-          .qr-container { flex-shrink: 0; }
-          .info { flex: 1; overflow: hidden; }
-          .company { font-size: 10px; font-weight: bold; text-transform: uppercase; margin-bottom: 4px; letter-spacing: 1px; color: #444; }
-          .name { font-size: 14px; font-weight: bold; margin-bottom: 2px; line-height: 1.2; max-height: 34px; overflow: hidden; }
-          .meta { font-size: 10px; color: #000; margin-bottom: 2px; font-family: monospace; }
-          .id { font-size: 10px; margin-top: 5px; color: #444; }
-          @media print { body { margin: 0; padding: 0; } .label { border: none; width: 100%; height: 100%; padding: 5px; } @page { size: 80mm 50mm; margin: 0; } }
-        </style>
-      </head>
-      <body>
-        <div class="label">
-          <div class="qr-container">${qrHtml}</div>
-          <div class="info">
-            <div class="company">PROPERTY OF EATX</div>
-            <div class="name">${asset.name}</div>
-            <div class="meta">Cat: ${asset.category}</div>
-            <div class="meta">SN: ${asset.serialNumber || 'N/A'}</div>
-            <div class="id">${asset.id}</div>
-          </div>
-        </div>
-        <script>window.onload = function() { window.print(); }</script>
-      </body>
-      </html>
-    `;
-    printWindow.document.write(html);
-    printWindow.document.close();
-  };
-
-  // --- Import/Export Handlers ---
   const handleDownloadTemplate = async () => {
     const workbook = new ExcelJS.Workbook();
     const validatorSheet = workbook.addWorksheet('Validators');
@@ -253,7 +181,6 @@ const AssetList: React.FC<AssetListProps> = ({ assets, onEdit, onDuplicate, onDe
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Explicit Confirmation
     const proceed = window.confirm(`Proceed importing "${file.name}"? Existing items with matching IDs will be updated, others will be created.`);
     if (!proceed) {
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -296,200 +223,194 @@ const AssetList: React.FC<AssetListProps> = ({ assets, onEdit, onDuplicate, onDe
     } catch (err) { console.error(err); alert("Error parsing file. Ensure it follows the template format."); } finally { setIsImporting(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
   };
 
+  const inputClass = "p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-[#0b1120] text-slate-700 dark:text-white focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-all";
+
   return (
-    <>
-    <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col h-full relative">
-      <div className="p-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col md:flex-row gap-4 relative z-30 rounded-t-xl">
-         <div className="relative flex-1 w-full">
+    <div className="space-y-6">
+      {/* Search & Actions Bar */}
+      <div className="flex flex-col md:flex-row items-center gap-3">
+        <div className="relative flex-1 w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input type="text" placeholder="Global search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-slate-900 dark:focus:ring-blue-600 text-sm shadow-sm bg-white dark:bg-slate-950 dark:text-white" />
-         </div>
-         <div className="flex flex-wrap gap-2 items-center md:justify-end">
-            <div className="relative" ref={columnMenuRef}>
-                <button onClick={() => setShowColumnMenu(!showColumnMenu)} className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm font-medium transition-colors ${showColumnMenu ? 'bg-slate-100 dark:bg-slate-800 border-slate-400 dark:border-slate-600 text-slate-900 dark:text-white' : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
-                    <Columns size={16} /> <span className="hidden sm:inline">Columns</span>
+            <input 
+                type="text" 
+                placeholder="Global search..." 
+                className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-[#020617] border border-slate-200 dark:border-slate-800 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 outline-none transition-all shadow-sm"
+                value={searchTerm} 
+                onChange={e => setSearchTerm(e.target.value)} 
+            />
+        </div>
+        
+        <div className="flex items-center gap-2" ref={columnMenuRef}>
+            <div className="relative">
+                <button onClick={() => setShowColumnMenu(!showColumnMenu)} className="flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-[#020617] border border-slate-200 dark:border-slate-800 rounded-lg text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm transition-all">
+                    <Columns size={16} className="text-slate-400" /> Columns
                 </button>
                 {showColumnMenu && (
-                    <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-50 overflow-hidden animate-in fade-in zoom-in-95 origin-top-right">
-                        <div className="p-3 bg-slate-50 dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Toggle Visibility</div>
-                        <div className="p-2 max-h-60 overflow-y-auto custom-scrollbar">
-                             <div className="flex items-center gap-2 p-2 rounded hover:bg-slate-50 dark:hover:bg-slate-800 text-sm text-slate-400 cursor-not-allowed"><Check size={14} className="text-slate-400"/> Asset Name (Locked)</div>
-                             {AVAILABLE_COLUMNS.map(col => (
-                                 <label key={col.id} className="flex items-center gap-2 p-2 rounded hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer text-sm text-slate-700 dark:text-slate-300">
-                                     <input type="checkbox" checked={visibleColumns[col.id]} onChange={() => toggleColumn(col.id)} className="rounded border-slate-300 dark:border-slate-600 text-slate-900 dark:text-blue-600 focus:ring-slate-900 dark:focus:ring-blue-600 bg-white dark:bg-slate-950"/> {col.label}
-                                 </label>
-                             ))}
+                    <div className="absolute right-0 top-12 w-60 bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 z-50 overflow-hidden animate-in fade-in zoom-in-95 origin-top-right">
+                        <div className="p-3 bg-slate-50 dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Toggle Columns</div>
+                        <div className="p-2 space-y-1">
+                            {AVAILABLE_COLUMNS.map(col => (
+                                <label key={col.id} className="flex items-center gap-2 p-2 rounded hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer text-xs text-slate-700 dark:text-slate-300 font-bold uppercase">
+                                    <input type="checkbox" checked={visibleColumns[col.id]} onChange={() => toggleColumn(col.id)} className="rounded border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-blue-500 bg-white dark:bg-slate-950"/>
+                                    {col.label}
+                                </label>
+                            ))}
                         </div>
                     </div>
                 )}
             </div>
+
             {canEdit && (
-            <>
-                <button onClick={handleDownloadTemplate} className="p-2 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2" title="Download Import Template"><FileSpreadsheet size={18} /> <span className="hidden sm:inline text-xs font-medium">Template</span></button>
-                <button onClick={handleExportData} className="p-2 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2" title="Export All Data"><FileOutput size={18} /> <span className="hidden sm:inline text-xs font-medium">Export</span></button>
-                <div className="relative">
-                    <input type="file" accept=".xlsx, .xls" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
-                    <button onClick={() => fileInputRef.current?.click()} disabled={isImporting} className="p-2 bg-slate-900 dark:bg-blue-600 text-white border border-slate-900 dark:border-blue-600 rounded-lg hover:bg-black dark:hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2" title="Import / Bulk Update">
-                        {isImporting ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />} <span className="hidden sm:inline text-xs font-medium">Import</span>
+                <div className="flex gap-2">
+                    <button onClick={handleDownloadTemplate} className="p-2.5 bg-white dark:bg-[#020617] border border-slate-200 dark:border-slate-800 rounded-lg text-slate-400 hover:text-amber-500 shadow-sm transition-colors" title="Download Import Template"><FileSpreadsheet size={18}/></button>
+                    <button onClick={() => fileInputRef.current?.click()} className="p-2.5 bg-white dark:bg-[#020617] border border-slate-200 dark:border-slate-800 rounded-lg text-slate-400 hover:text-emerald-500 shadow-sm transition-colors" title="Import / Bulk Update">
+                        {isImporting ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18}/>}
                     </button>
+                    <button onClick={handleExportData} className="p-2.5 bg-white dark:bg-[#020617] border border-slate-200 dark:border-slate-800 rounded-lg text-slate-400 hover:text-blue-500 shadow-sm transition-colors" title="Export Full Registry"><FileOutput size={18}/></button>
+                    <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".xlsx, .xls" />
                 </div>
-            </>
             )}
-         </div>
+        </div>
       </div>
 
-      <div className="p-4 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 relative z-20">
-          <div className="relative col-span-1"><input type="text" placeholder="Serial No." value={filterSerial} onChange={e => setFilterSerial(e.target.value)} className="w-full pl-2 pr-2 py-1.5 border border-slate-300 dark:border-slate-700 rounded-md text-sm bg-white dark:bg-slate-900 dark:text-white" /></div>
-          <div className="relative col-span-1"><input type="text" placeholder="Employee" value={filterEmployee} onChange={e => setFilterEmployee(e.target.value)} className="w-full pl-2 pr-2 py-1.5 border border-slate-300 dark:border-slate-700 rounded-md text-sm bg-white dark:bg-slate-900 dark:text-white" /></div>
-          <div className="relative col-span-1"><input type="text" placeholder="Supplier" value={filterSupplier} onChange={e => setFilterSupplier(e.target.value)} className="w-full pl-2 pr-2 py-1.5 border border-slate-300 dark:border-slate-700 rounded-md text-sm bg-white dark:bg-slate-900 dark:text-white" /></div>
-          <div className="col-span-1">
-            <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="w-full py-1.5 px-2 border border-slate-300 dark:border-slate-700 rounded-md text-sm bg-white dark:bg-slate-900 dark:text-white">
-                <option value="All">All Categories</option>{categories.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <div className="col-span-1">
-            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="w-full py-1.5 px-2 border border-slate-300 dark:border-slate-700 rounded-md text-sm bg-white dark:bg-slate-900 dark:text-white">
-                <option value="All">All Statuses</option>{ASSET_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className="col-span-1">
-            <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)} className="w-full py-1.5 px-2 border border-slate-300 dark:border-slate-700 rounded-md text-sm bg-white dark:bg-slate-900 dark:text-white">
-                <option value="All">All Locations</option>{locations.map(l => <option key={l} value={l}>{l}</option>)}
-            </select>
-          </div>
-          <button onClick={clearFilters} className="col-span-2 xl:col-span-1 py-1.5 px-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-md text-xs font-medium flex items-center justify-center gap-1">
-              <RefreshCw size={12}/> Clear Filters
+      {/* Filter Row */}
+      <div className="flex flex-wrap md:flex-nowrap items-center gap-3">
+          <input placeholder="Serial No." value={filterSerial} onChange={e => setFilterSerial(e.target.value)} className={`${inputClass} flex-1 min-w-[120px]`} />
+          <input placeholder="Employee" value={filterEmployee} onChange={e => setFilterEmployee(e.target.value)} className={`${inputClass} flex-1 min-w-[120px]`} />
+          <input placeholder="Supplier" value={filterSupplier} onChange={e => setFilterSupplier(e.target.value)} className={`${inputClass} flex-1 min-w-[120px]`} />
+          <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className={`${inputClass} flex-1 min-w-[140px]`}>
+              <option value="All">All Categories</option>{categories.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={`${inputClass} flex-1 min-w-[130px]`}>
+              <option value="All">All Statuses</option>{ASSET_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)} className={`${inputClass} flex-1 min-w-[140px]`}>
+              <option value="All">All Locations</option>{locations.map(l => <option key={l} value={l}>{l}</option>)}
+          </select>
+          <button onClick={() => { setSearchTerm(''); setFilterStatus('All'); setFilterCategory('All'); setFilterLocation('All'); setFilterSerial(''); setFilterEmployee(''); setFilterSupplier(''); }} className="flex items-center justify-center gap-2 text-[11px] font-black uppercase text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors px-2 whitespace-nowrap">
+              <RefreshCw size={14} /> Clear Filters
           </button>
       </div>
 
-      <div className="hidden md:block overflow-x-auto min-h-[400px]">
-        <table className="w-full text-left border-collapse min-w-[1000px]">
-          <thead>
-            <tr className="bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 text-xs uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800">
-              <th className="p-4 w-[250px] sticky left-0 bg-slate-50 dark:bg-slate-950 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Asset Name</th>
-              {visibleColumns.serialNumber && <th className="p-4 w-[120px]">Serial No.</th>}
-              {visibleColumns.category && <th className="p-4 w-[150px]">Category</th>}
-              {visibleColumns.status && <th className="p-4 w-[120px]">Status</th>}
-              {visibleColumns.location && <th className="p-4 w-[150px]">Location</th>}
-              {visibleColumns.department && <th className="p-4 w-[120px]">Department</th>}
-              {visibleColumns.assignedEmployee && <th className="p-4 w-[150px]">Assigned To</th>}
-              {visibleColumns.supplier && <th className="p-4 w-[150px]">Supplier</th>}
-              {visibleColumns.purchaseCost && <th className="p-4 w-[100px] text-right">Cost</th>}
-              {visibleColumns.purchaseDate && <th className="p-4 w-[120px]">Purchase Date</th>}
-              <th className="p-4 text-right sticky right-0 bg-slate-50 dark:bg-slate-950 z-10 w-[120px] shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {paginatedAssets.map(asset => (
-              <tr key={asset.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group">
-                <td className="p-4 sticky left-0 bg-white dark:bg-slate-900 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] group-hover:bg-slate-50 dark:group-hover:bg-slate-800/50">
-                  <div className="font-bold text-slate-800 dark:text-slate-200 text-sm">{asset.name}</div>
-                  {asset.description && <div className="text-xs text-slate-500 dark:text-slate-500 truncate max-w-[220px] mt-0.5">{asset.description}</div>}
-                </td>
-                {visibleColumns.serialNumber && <td className="p-4 text-xs font-mono text-slate-600 dark:text-slate-400">{asset.serialNumber || '-'}</td>}
-                {visibleColumns.category && <td className="p-4"><div className="flex items-center gap-1.5 text-xs font-medium px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded-md w-fit text-slate-700 dark:text-slate-300 whitespace-nowrap"><Tag size={12} /> {asset.category}</div></td>}
-                {visibleColumns.status && <td className="p-4"><span className={`px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap border ${getStatusColor(asset.status)}`}>{asset.status}</span></td>}
-                {visibleColumns.location && <td className="p-4 text-sm text-slate-600 dark:text-slate-400 flex items-center gap-1"><MapPin size={14} className="text-slate-400 shrink-0"/> {asset.location}</td>}
-                {visibleColumns.department && <td className="p-4 text-xs text-slate-500">{asset.department ? <div className="flex items-center gap-1"><Building2 size={12}/> {asset.department}</div> : '-'}</td>}
-                {visibleColumns.assignedEmployee && <td className="p-4">{asset.assignedEmployee ? <div className="flex items-center gap-1.5 text-xs text-slate-800 dark:text-slate-200 font-medium bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded w-fit whitespace-nowrap"><User size={12} /> {asset.assignedEmployee}</div> : <span className="text-slate-400 text-xs">-</span>}</td>}
-                {visibleColumns.supplier && <td className="p-4 text-sm text-slate-600 dark:text-slate-400">{asset.supplier ? <div className="flex items-center gap-1"><ShoppingCart size={14} className="text-slate-400"/> {asset.supplier}</div> : '-'}</td>}
-                {visibleColumns.purchaseCost && <td className="p-4 text-sm text-slate-700 dark:text-slate-300 text-right font-mono">{asset.purchaseCost ? `AED ${asset.purchaseCost.toLocaleString()}` : '-'}</td>}
-                {visibleColumns.purchaseDate && <td className="p-4 text-xs text-slate-500 flex items-center gap-1"><Calendar size={12} className="text-slate-400"/> {asset.purchaseDate || '-'}</td>}
-                <td className="p-4 text-right sticky right-0 bg-white dark:bg-slate-900 z-10 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/50 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.05)]">
-                  <div className="flex justify-end gap-1">
-                    <button onClick={(e) => { e.stopPropagation(); handlePrintLabel(asset); }} className="p-1.5 text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 rounded-md" title="Print QR Label"><QrCode size={16} /></button>
-                    {canEdit ? (
-                      <>
-                        <button onClick={(e) => { e.stopPropagation(); onEdit(asset); }} className="p-1.5 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-md" title="Edit"><Edit2 size={16} /></button>
-                        <button onClick={(e) => { e.stopPropagation(); onDuplicate(asset); }} className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-md" title="Duplicate"><Copy size={16} /></button>
-                      </>
-                    ) : null}
-                    {canDelete ? (
-                      <button onClick={(e) => { e.stopPropagation(); setAssetToDelete(asset); }} className="p-1.5 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md" title="Delete"><Trash2 size={16} /></button>
-                    ) : null}
-                    {!canEdit && !canDelete && <span className="p-2 text-slate-300 dark:text-slate-600 cursor-not-allowed"><Lock size={16} /></span>}
-                  </div>
-                </td>
+      {/* Table Container */}
+      <div className="bg-white dark:bg-[#020617] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse table-fixed min-w-[1100px]">
+            <thead>
+              <tr className="border-b border-slate-100 dark:border-slate-800">
+                <th className="p-4 pl-6 text-[11px] font-black uppercase tracking-widest text-slate-400 w-[18%]">Asset Name</th>
+                {visibleColumns.serialNumber && <th className="p-4 text-[11px] font-black uppercase tracking-widest text-slate-400 w-[12%]">Serial No.</th>}
+                {visibleColumns.category && <th className="p-4 text-[11px] font-black uppercase tracking-widest text-slate-400 w-[16%]">Category</th>}
+                {visibleColumns.status && <th className="p-4 text-[11px] font-black uppercase tracking-widest text-slate-400 w-[10%]">Status</th>}
+                {visibleColumns.location && <th className="p-4 text-[11px] font-black uppercase tracking-widest text-slate-400 w-[12%]">Location</th>}
+                {visibleColumns.department && <th className="p-4 text-[11px] font-black uppercase tracking-widest text-slate-400 w-[10%]">Department</th>}
+                {visibleColumns.assignedEmployee && <th className="p-4 text-[11px] font-black uppercase tracking-widest text-slate-400 w-[12%]">Assigned To</th>}
+                {visibleColumns.purchaseCost && <th className="p-4 text-[11px] font-black uppercase tracking-widest text-slate-400 w-[10%]">Cost</th>}
+                <th className="p-4 pr-6 text-[11px] font-black uppercase tracking-widest text-slate-400 w-[8%] text-right">Actions</th>
               </tr>
-            ))}
-            {filteredAssets.length === 0 && <tr><td colSpan={12} className="p-12 text-center text-slate-400 dark:text-slate-500">No assets found matching your filters.</td></tr>}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="md:hidden bg-slate-50 dark:bg-slate-950 p-4 space-y-4 min-h-[400px] pb-40">
-          {paginatedAssets.map(asset => (
-              <div key={asset.id} className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col gap-3">
-                  <div className="flex justify-between items-start">
-                      <div className="min-w-0 pr-2">
-                          <h3 className="font-bold text-slate-900 dark:text-white text-sm truncate">{asset.name}</h3>
-                          <div className="text-xs text-slate-500 font-mono mt-0.5 truncate">{asset.serialNumber || 'No Serial'}</div>
+            </thead>
+            <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
+              {paginatedAssets.map(asset => (
+                <tr key={asset.id} className="group hover:bg-slate-50/50 dark:hover:bg-blue-500/[0.03] transition-colors">
+                  <td className="p-4 pl-6">
+                    <div className="font-black text-slate-900 dark:text-slate-100 text-[12px] uppercase truncate" title={asset.name}>{asset.name}</div>
+                  </td>
+                  {visibleColumns.serialNumber && (
+                    <td className="p-4 text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">
+                      {asset.serialNumber || '-'}
+                    </td>
+                  )}
+                  {visibleColumns.category && (
+                    <td className="p-4">
+                      <div className="flex items-center gap-1.5 text-[9px] font-black bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 px-2 py-1 rounded-md w-fit text-slate-600 dark:text-slate-300 uppercase truncate max-w-full">
+                        <Tag size={10} className="text-slate-400 shrink-0"/> {asset.category}
                       </div>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border whitespace-nowrap ${getStatusColor(asset.status)}`}>{asset.status}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm text-slate-600 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 pt-3">
-                      <div><span className="text-[10px] text-slate-400 uppercase font-bold block mb-0.5">Category</span><div className="flex items-center gap-1 truncate"><Tag size={12} className="shrink-0"/> {asset.category}</div></div>
-                      <div><span className="text-[10px] text-slate-400 uppercase font-bold block mb-0.5">Location</span><div className="flex items-center gap-1 truncate"><MapPin size={12} className="shrink-0"/> {asset.location}</div></div>
-                      <div className="col-span-2">
-                          <span className="text-[10px] text-slate-400 uppercase font-bold block mb-0.5">Assigned To</span>
-                          <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 p-2 rounded border border-slate-100 dark:border-slate-700">
-                             <div className="bg-white dark:bg-slate-700 p-1 rounded-full shadow-sm"><User size={12}/></div>
-                             <span className="truncate font-medium text-slate-700 dark:text-slate-200">{asset.assignedEmployee || <span className="text-slate-400 italic font-normal">Unassigned</span>}</span>
-                          </div>
+                    </td>
+                  )}
+                  {visibleColumns.status && (
+                    <td className="p-4">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tight border ${asset.status === 'Active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                        {asset.status}
+                      </span>
+                    </td>
+                  )}
+                  {visibleColumns.location && (
+                    <td className="p-4 text-[11px] font-bold text-slate-600 dark:text-slate-400 truncate">
+                      <div className="flex items-center gap-1.5"><MapPin size={12} className="text-slate-300 shrink-0"/> {asset.location}</div>
+                    </td>
+                  )}
+                  {visibleColumns.department && (
+                    <td className="p-4 text-[11px] font-bold text-slate-500 dark:text-slate-500 truncate">
+                      <div className="flex items-center gap-1.5"><Building2 size={12} className="text-slate-300 shrink-0"/> {asset.department || '-'}</div>
+                    </td>
+                  )}
+                  {visibleColumns.assignedEmployee && (
+                    <td className="p-4 text-[11px] font-bold text-slate-600 dark:text-slate-400 truncate">
+                      <div className="flex items-center gap-1.5"><User size={12} className="text-slate-300 shrink-0"/> {asset.assignedEmployee || '-'}</div>
+                    </td>
+                  )}
+                  {visibleColumns.purchaseCost && (
+                    <td className="p-4">
+                      <div className="text-[11px] text-slate-900 dark:text-slate-200">
+                        {asset.purchaseCost ? (
+                          <span className="flex items-center gap-1">
+                            <span className="text-[9px] text-slate-400 font-bold uppercase">AED</span> 
+                            <span className="font-black">{asset.purchaseCost.toLocaleString(undefined, {minimumFractionDigits: 0})}</span>
+                          </span>
+                        ) : '-'}
                       </div>
-                  </div>
-                  <div className="flex gap-2 border-t border-slate-100 dark:border-slate-800 pt-3 mt-1">
-                      <button onClick={() => handlePrintLabel(asset)} className="p-2 text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-lg"><QrCode size={16} /></button>
-                      {canEdit && (
-                          <>
-                            <button onClick={() => onEdit(asset)} className="flex-1 py-2 bg-slate-900 dark:bg-blue-600 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 hover:bg-black dark:hover:bg-blue-700 shadow-sm"><Edit2 size={14} /> Edit Asset</button>
-                            <button onClick={() => onDuplicate(asset)} className="p-2 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-900/50 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50"><Copy size={16} /></button>
-                          </>
-                      )}
-                      {canDelete && <button onClick={() => setAssetToDelete(asset)} className="p-2 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 border border-red-100 dark:border-red-900/50 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/50"><Trash2 size={16} /></button>}
-                  </div>
-              </div>
-          ))}
-          {filteredAssets.length === 0 && <div className="p-12 text-center text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-300 dark:border-slate-700"><Search size={32} className="mx-auto mb-2 opacity-20"/>No assets found.</div>}
-      </div>
-
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-4 shadow-[0_-4px_10px_rgba(0,0,0,0.1)] md:static md:shadow-none md:rounded-b-xl md:border-t flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-3 text-sm text-slate-600 dark:text-slate-400 w-full md:w-auto justify-between md:justify-start">
-            <div className="flex items-center gap-2">
-                <span className="hidden sm:inline">Rows:</span>
-                <select value={itemsPerPage} onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }} className="border border-slate-300 dark:border-slate-700 rounded px-2 py-1 focus:ring-2 focus:ring-slate-900 dark:focus:ring-blue-600 outline-none bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-300">
-                    <option value={10}>10</option><option value={25}>25</option><option value={50}>50</option>
-                </select>
-            </div>
-            <span className="text-slate-500 text-xs sm:text-sm font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">{filteredAssets.length > 0 ? `${startIndex + 1}-${endIndex} / ${filteredAssets.length}` : '0 / 0'}</span>
-        </div>
-        <div className="flex items-center gap-1 w-full md:w-auto justify-center">
-            <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1} className="p-2 md:p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent text-slate-600 dark:text-slate-400 flex-1 md:flex-none flex justify-center"><ChevronsLeft size={20} /></button>
-            <button onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1} className="p-2 md:p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent text-slate-600 dark:text-slate-400 flex-1 md:flex-none flex justify-center"><ChevronLeft size={20} /></button>
-            <span className="text-xs sm:text-sm font-bold px-3 text-slate-700 dark:text-slate-300 whitespace-nowrap">Page {currentPage}</span>
-            <button onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))} disabled={currentPage === totalPages || totalPages === 0} className="p-2 md:p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent text-slate-600 dark:text-slate-400 flex-1 md:flex-none flex justify-center"><ChevronRight size={20} /></button>
-            <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages || totalPages === 0} className="p-2 md:p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent text-slate-600 dark:text-slate-400 flex-1 md:flex-none flex justify-center"><ChevronsRight size={20} /></button>
-        </div>
-      </div>
-    </div>
-    
-    {assetToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl max-w-sm w-full p-6 border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in">
-                <div className="flex flex-col items-center text-center gap-4">
-                    <div className="bg-red-50 dark:bg-red-900/30 p-3 rounded-full text-red-600 dark:text-red-400"><AlertTriangle size={32} /></div>
-                    <div><h3 className="text-xl font-bold text-slate-900 dark:text-white">Delete Asset?</h3><p className="text-slate-500 dark:text-slate-400 text-sm mt-2">Permanently remove <span className="font-semibold text-slate-900 dark:text-white">{assetToDelete.name}</span>?</p></div>
-                    <div className="flex gap-3 w-full mt-4">
-                        <button onClick={() => setAssetToDelete(null)} className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-800">Cancel</button>
-                        <button onClick={() => { onDelete(assetToDelete.id); setAssetToDelete(null); }} className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 shadow-lg shadow-red-200 dark:shadow-red-900/30">Yes, Delete</button>
+                    </td>
+                  )}
+                  <td className="p-4 pr-6 text-right">
+                    <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => onEdit(asset)} className="p-1.5 text-slate-400 hover:text-blue-500 transition-colors"><Edit2 size={14}/></button>
+                      <button onClick={() => onDuplicate(asset)} className="p-1.5 text-slate-400 hover:text-indigo-500 transition-colors"><Copy size={14}/></button>
+                      <button onClick={() => onDelete(asset.id)} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
                     </div>
-                </div>
-            </div>
+                  </td>
+                </tr>
+              ))}
+              {filteredAssets.length === 0 && (
+                <tr>
+                  <td colSpan={10} className="p-20 text-center text-slate-400 font-bold text-xs uppercase tracking-[0.2em] opacity-30">No matching records</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
-    )}
+      </div>
 
-    {/* Enhanced Import Success Modal */}
-    {showImportSuccess !== null && (
+      {/* Pagination Footer */}
+      <div className="bg-white dark:bg-[#020617] rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-6">
+              <div className="flex items-center gap-3">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Rows:</span>
+                  <select 
+                    value={itemsPerPage} 
+                    onChange={e => { setItemsPerPage(parseInt(e.target.value)); setCurrentPage(1); }}
+                    className="bg-transparent border-b border-slate-200 dark:border-slate-800 text-[10px] font-black text-slate-700 dark:text-slate-300 outline-none px-1 cursor-pointer"
+                  >
+                      <option value={10}>10</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                  </select>
+              </div>
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  {startIndex + 1}-{endIndex} / {filteredAssets.length}
+              </div>
+          </div>
+
+          <div className="flex items-center gap-1">
+              <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1} className="p-1.5 rounded hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-20 transition-all"><ChevronsLeft size={16}/></button>
+              <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 rounded hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-20 transition-all"><ChevronLeft size={16}/></button>
+              <div className="px-4 text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">Page {currentPage}</div>
+              <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages || totalPages === 0} className="p-1.5 rounded hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-20 transition-all"><ChevronRight size={16}/></button>
+              <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages || totalPages === 0} className="p-1.5 rounded hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-20 transition-all"><ChevronsRight size={16}/></button>
+          </div>
+      </div>
+
+      {/* Success Modal */}
+      {showImportSuccess !== null && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
             <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-sm w-full p-8 border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in">
                 <div className="flex flex-col items-center text-center gap-6">
@@ -499,20 +420,20 @@ const AssetList: React.FC<AssetListProps> = ({ assets, onEdit, onDuplicate, onDe
                     <div>
                         <h3 className="text-2xl font-bold text-slate-900 dark:text-white">Import Complete</h3>
                         <p className="text-slate-500 dark:text-slate-400 text-sm mt-2 leading-relaxed">
-                            Successfully processed <span className="font-bold text-slate-900 dark:text-white">{showImportSuccess}</span> assets from the spreadsheet. Your registry has been updated.
+                            Successfully processed <span className="font-bold text-slate-900 dark:text-white">{showImportSuccess}</span> assets from the spreadsheet.
                         </p>
                     </div>
                     <button 
                         onClick={() => setShowImportSuccess(null)} 
-                        className="w-full py-3.5 bg-slate-900 dark:bg-blue-600 text-white rounded-2xl font-bold hover:bg-black dark:hover:bg-blue-700 shadow-lg shadow-slate-900/20 transition-all active:scale-95"
+                        className="w-full py-3.5 bg-slate-900 dark:bg-blue-600 text-white rounded-2xl font-bold hover:bg-black dark:hover:bg-blue-700 shadow-lg transition-all active:scale-95"
                     >
-                        Great, thanks!
+                        Dismiss
                     </button>
                 </div>
             </div>
         </div>
-    )}
-    </>
+      )}
+    </div>
   );
 };
 
