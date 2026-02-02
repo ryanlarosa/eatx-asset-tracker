@@ -1,7 +1,7 @@
 
 import { initializeApp, getApps, getApp } from "firebase/app";
 import type { FirebaseApp } from "firebase/app";
-// Separated function imports from type imports to resolve module resolution issues in mixed environments
+// Fix: Combined function and class/type imports from firebase/firestore to resolve exported member errors in mixed environments
 import { 
   getFirestore, 
   collection, 
@@ -16,10 +16,7 @@ import {
   where, 
   orderBy, 
   limit,
-  writeBatch
-} from "firebase/firestore";
-// Correctly importing interfaces and classes as types only
-import type {
+  writeBatch,
   Firestore,
   QuerySnapshot,
   DocumentData

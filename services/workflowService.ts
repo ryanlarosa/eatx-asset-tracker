@@ -1,6 +1,18 @@
 
-// Fixed firestore modular imports to ensure visibility of all required functions
-import { addDoc, collection, doc, getDoc, getDocs, onSnapshot, orderBy, query, updateDoc, where, writeBatch } from "firebase/firestore";
+// Fix: Cleaned up modular imports from firebase/firestore to resolve module resolution issues
+import { 
+  addDoc, 
+  collection, 
+  doc, 
+  getDoc, 
+  getDocs, 
+  onSnapshot, 
+  orderBy, 
+  query, 
+  updateDoc, 
+  where, 
+  writeBatch 
+} from "firebase/firestore";
 import { db, getColName, snapToData, sanitizeData, createNotification } from "./firebase";
 import { sendSystemEmail } from "./configService";
 import { getCurrentUserProfile } from "./authService";

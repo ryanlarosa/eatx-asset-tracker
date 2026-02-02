@@ -1,6 +1,14 @@
 
-// Fixed firestore modular imports to resolve naming and visibility issues in the build environment
-import { collection, deleteDoc, doc, onSnapshot, orderBy, query, setDoc } from "firebase/firestore";
+// Fix: Cleaned up modular imports from firebase/firestore to resolve module resolution issues
+import { 
+  collection, 
+  deleteDoc, 
+  doc, 
+  onSnapshot, 
+  orderBy, 
+  query, 
+  setDoc 
+} from "firebase/firestore";
 import { db, getColName, snapToData, sanitizeData } from "./firebase";
 import { Project, ProjectItem, Invoice, Task } from "../types";
 

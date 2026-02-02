@@ -14,7 +14,7 @@ export * from "./documentService";
 export * from "../types";
 
 import { db, getColName, snapToData } from "./firebase";
-// Fixed firestore modular imports to ensure visibility in all environments
+// Fix: Grouped modular imports from firebase/firestore on a single block to improve symbol visibility in the build environment
 import { 
   collection, 
   doc, 

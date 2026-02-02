@@ -1,5 +1,5 @@
 
-// Fixed modular imports for doc, getDoc, etc. to ensure visibility to the compiler
+// Fix: Simplified modular imports from firebase/firestore to resolve module resolution errors
 import { collection, doc, getDoc, getDocs, query, setDoc } from "firebase/firestore";
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword, getAuth } from "firebase/auth";
 import { initializeApp, deleteApp } from "firebase/app";

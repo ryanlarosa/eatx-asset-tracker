@@ -1,5 +1,5 @@
 
-// Fixed firestore modular imports for doc, getDoc, etc. to ensure they are correctly resolved
+// Fix: Simplified and grouped modular imports from firebase/firestore to resolve exported member errors
 import { collection, doc, getDoc, getDocs, query, setDoc, where, writeBatch } from "firebase/firestore";
 import { db, getColName, sanitizeData } from "./firebase";
 import { AppConfig, EmailConfig } from "../types";

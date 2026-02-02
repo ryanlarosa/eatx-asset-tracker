@@ -1,6 +1,18 @@
 
-// Fixed firestore modular imports to resolve naming and visibility issues in the build environment
-import { addDoc, collection, deleteDoc, doc, getDocs, onSnapshot, orderBy, query, setDoc, where, writeBatch } from "firebase/firestore";
+// Fix: Cleaned up modular imports from firebase/firestore to resolve symbol visibility issues
+import { 
+  addDoc, 
+  collection, 
+  deleteDoc, 
+  doc, 
+  getDocs, 
+  onSnapshot, 
+  orderBy, 
+  query, 
+  setDoc, 
+  where, 
+  writeBatch 
+} from "firebase/firestore";
 import { db, getColName, snapToData, sanitizeData } from "./firebase";
 import { getCurrentUserProfile } from "./authService";
 import { Asset, AssetLog, AssetStats } from "../types";
