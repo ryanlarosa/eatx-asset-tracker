@@ -13,18 +13,27 @@ import {
   where, 
   writeBatch 
 } from "firebase/firestore";
-import { db, getColName, snapToData, sanitizeData } from "./firebase";
+import { db, getColName, snapToData, sanitizeData, handleFirestoreError, OperationType } from "./firebase";
 import { getCurrentUserProfile } from "./authService";
 import { Asset, AssetLog, AssetStats } from "../types";
 
 export const getAssets = async (): Promise<Asset[]> => {
-  const snap = await getDocs(query(collection(db, getColName("assets")), orderBy("lastUpdated", "desc")));
-  return snapToData<Asset>(snap);
+  const path = getColName("assets");
+  try {
+    const snap = await getDocs(query(collection(db, path), orderBy("lastUpdated", "desc")));
+    return snapToData<Asset>(snap);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return [];
+  }
 };
 
 export const listenToAssets = (cb: (assets: Asset[]) => void) => {
-  return onSnapshot(query(collection(db, getColName("assets")), orderBy("lastUpdated", "desc")), (snap) => {
+  const path = getColName("assets");
+  return onSnapshot(query(collection(db, path), orderBy("lastUpdated", "desc")), (snap) => {
     cb(snapToData<Asset>(snap));
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
   });
 };
 
@@ -32,36 +41,60 @@ export const saveAsset = async (asset: Asset) => {
   const isNew = !asset.id;
   const assetId = asset.id || `ast-${Math.random().toString(36).substr(2, 9)}`;
   const finalAsset = { ...asset, id: assetId, lastUpdated: new Date().toISOString() };
-  await setDoc(doc(db, getColName("assets"), assetId), sanitizeData(finalAsset));
+  const path = getColName("assets");
+  try {
+    await setDoc(doc(db, path, assetId), sanitizeData(finalAsset));
+  } catch (error) {
+    handleFirestoreError(error, isNew ? OperationType.CREATE : OperationType.UPDATE, path);
+  }
 
   try {
-    await addDoc(collection(db, getColName("logs")), {
+    const logsPath = getColName("logs");
+    await addDoc(collection(db, logsPath), {
       assetId,
       action: isNew ? "Created" : "Updated",
       details: isNew ? `Asset ${asset.name} onboarded.` : `Asset ${asset.name} updated manually.`,
       performedBy: getCurrentUserProfile()?.email || "System",
       timestamp: new Date().toISOString(),
     });
-  } catch (e) {}
+  } catch (e) {
+    // Silent failure for logs
+  }
 };
 
 export const deleteAsset = async (id: string) => {
-  await deleteDoc(doc(db, getColName("assets"), id));
+  const path = getColName("assets");
+  try {
+    await deleteDoc(doc(db, path, id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
 };
 
 export const importAssetsBulk = async (assets: Asset[]) => {
+  const path = getColName("assets");
   const batch = writeBatch(db);
   assets.forEach((a) => {
-    const ref = doc(db, getColName("assets"), a.id);
+    const ref = doc(db, path, a.id);
     batch.set(ref, sanitizeData(a));
   });
-  await batch.commit();
+  try {
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
 };
 
 export const getAssetLogs = async (assetId: string): Promise<AssetLog[]> => {
-  const q = query(collection(db, getColName("logs")), where("assetId", "==", assetId), orderBy("timestamp", "desc"));
-  const snap = await getDocs(q);
-  return snapToData<AssetLog>(snap);
+  const path = getColName("logs");
+  const q = query(collection(db, path), where("assetId", "==", assetId), orderBy("timestamp", "desc"));
+  try {
+    const snap = await getDocs(q);
+    return snapToData<AssetLog>(snap);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return [];
+  }
 };
 
 export const getStats = (assets: Asset[]): AssetStats => {
@@ -110,19 +143,34 @@ export const bulkTransferAssetsInternal = (batch: any, assetIds: string[], targe
 };
 
 export const bulkAssignAssets = async (assetIds: string[], employeeName: string, docId: string) => {
+  const path = getColName("assets");
   const batch = writeBatch(db);
   bulkAssignAssetsInternal(batch, assetIds, employeeName, docId, getCurrentUserProfile()?.email || "System");
-  await batch.commit();
+  try {
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
 };
 
 export const bulkReturnAssets = async (assetIds: string[], docId: string) => {
+  const path = getColName("assets");
   const batch = writeBatch(db);
   bulkReturnAssetsInternal(batch, assetIds, docId, getCurrentUserProfile()?.email || "System");
-  await batch.commit();
+  try {
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
 };
 
 export const bulkTransferAssets = async (assetIds: string[], targetName: string, docId: string) => {
+  const path = getColName("assets");
   const batch = writeBatch(db);
   bulkTransferAssetsInternal(batch, assetIds, targetName, docId, getCurrentUserProfile()?.email || "System");
-  await batch.commit();
+  try {
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
 };

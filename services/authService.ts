@@ -1,15 +1,21 @@
 
 // Fix: Simplified modular imports from firebase/firestore to resolve module resolution errors
 import { collection, doc, getDoc, getDocs, query, setDoc } from "firebase/firestore";
-import { signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword, getAuth } from "firebase/auth";
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword, getAuth, signInAnonymously } from "firebase/auth";
 import { initializeApp, deleteApp } from "firebase/app";
-import { db, auth, snapToData, secondaryConfig } from "./firebase";
+import { db, auth, snapToData, secondaryConfig, handleFirestoreError, OperationType } from "./firebase";
 import { UserProfile, UserRole } from "../types";
 
 let currentUserProfile: UserProfile | null = null;
 const authListeners: Function[] = [];
 
 export const getCurrentUserProfile = () => currentUserProfile;
+
+export const ensureAnonymousAuth = async () => {
+  if (!auth.currentUser) {
+    await signInAnonymously(auth);
+  }
+};
 
 onAuthStateChanged(auth, async (firebaseUser) => {
   if (firebaseUser) {
@@ -45,6 +51,9 @@ onAuthStateChanged(auth, async (firebaseUser) => {
         currentUserProfile = newProfile;
       }
     } catch (e) {
+      if (e instanceof Error && e.message.includes("Missing or insufficient permissions")) {
+        handleFirestoreError(e, OperationType.GET, "users");
+      }
       currentUserProfile = { uid: firebaseUser.uid, email: firebaseUser.email || "", role: "viewer" };
     }
   } else {
@@ -66,8 +75,14 @@ export const loginUser = async (email: string, pass: string) => signInWithEmailA
 export const logoutUser = async () => signOut(auth);
 
 export const getAllUsers = async (): Promise<UserProfile[]> => {
-  const snap = await getDocs(query(collection(db, "users")));
-  return snapToData<UserProfile>(snap);
+  const path = "users";
+  try {
+    const snap = await getDocs(query(collection(db, path)));
+    return snapToData<UserProfile>(snap);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return [];
+  }
 };
 
 export const adminCreateUser = async (email: string, pass: string, role: UserRole) => {
@@ -82,7 +97,12 @@ export const adminCreateUser = async (email: string, pass: string, role: UserRol
       role,
       displayName: email.split('@')[0],
     };
-    await setDoc(doc(db, "users", uid), newProfile);
+    const path = "users";
+    try {
+      await setDoc(doc(db, path, uid), newProfile);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, path);
+    }
     await signOut(secondaryAuth);
     return true;
   } finally {
@@ -91,5 +111,10 @@ export const adminCreateUser = async (email: string, pass: string, role: UserRol
 };
 
 export const updateUserRole = async (uid: string, role: UserRole) => {
-  await setDoc(doc(db, "users", uid), { role }, { merge: true });
+  const path = "users";
+  try {
+    await setDoc(doc(db, path, uid), { role }, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
 };

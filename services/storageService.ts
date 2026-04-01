@@ -13,7 +13,7 @@ export * from "./operationService";
 export * from "./documentService";
 export * from "../types";
 
-import { db, getColName, snapToData } from "./firebase";
+import { db, getColName, snapToData, handleFirestoreError, OperationType } from "./firebase";
 // Fix: Grouped modular imports from firebase/firestore on a single block to improve symbol visibility in the build environment
 import { 
   collection, 
@@ -32,29 +32,46 @@ import { AppNotification } from "../types";
 // Notifications Listeners (Specific barrel logic for UI convenience)
 export const listenToNotifications = (cb: (notifs: AppNotification[]) => void) => {
   // Relying on modular onSnapshot for real-time updates
-  return onSnapshot(query(collection(db, getColName("notifications")), orderBy("timestamp", "desc"), limit(50)), (snap) => {
+  const path = getColName("notifications");
+  return onSnapshot(query(collection(db, path), orderBy("timestamp", "desc"), limit(50)), (snap) => {
     cb(snapToData<AppNotification>(snap));
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
   });
 };
 
 export const markNotificationRead = async (id: string) => {
-  await updateDoc(doc(db, getColName("notifications"), id), { read: true });
+  const path = getColName("notifications");
+  try {
+    await updateDoc(doc(db, path, id), { read: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
 };
 
 export const markAllNotificationsRead = async () => {
-  const snap = await getDocs(query(collection(db, getColName("notifications")), where("read", "==", false)));
-  const batch = writeBatch(db);
-  snap.docs.forEach((d) => batch.update(d.ref, { read: true }));
-  await batch.commit();
+  const path = getColName("notifications");
+  try {
+    const snap = await getDocs(query(collection(db, path), where("read", "==", false)));
+    const batch = writeBatch(db);
+    snap.docs.forEach((d) => batch.update(d.ref, { read: true }));
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
 };
 
 // DANGER ZONE (Legacy keep here for one-click cleanups)
 export const resetDatabase = async () => {
   const collections = ["assets", "logs", "projects", "incidents", "requests", "invoices", "documents", "pendingHandovers", "notifications", "tasks"];
   const batch = writeBatch(db);
-  for (const col of collections) {
-    const snap = await getDocs(collection(db, getColName(col)));
-    snap.docs.forEach((d) => batch.delete(d.ref));
+  try {
+    for (const col of collections) {
+      const snap = await getDocs(collection(db, getColName(col)));
+      snap.docs.forEach((d) => batch.delete(d.ref));
+    }
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, "multiple_collections");
   }
-  await batch.commit();
 };

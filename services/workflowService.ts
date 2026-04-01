@@ -13,7 +13,7 @@ import {
   where, 
   writeBatch 
 } from "firebase/firestore";
-import { db, getColName, snapToData, sanitizeData, createNotification } from "./firebase";
+import { db, getColName, snapToData, sanitizeData, createNotification, handleFirestoreError, OperationType } from "./firebase";
 import { sendSystemEmail } from "./configService";
 import { getCurrentUserProfile } from "./authService";
 import { AssetRequest, IncidentReport, PublicStatusResult } from "../types";
@@ -21,15 +21,23 @@ import { AssetRequest, IncidentReport, PublicStatusResult } from "../types";
 // --- REQUESTS ---
 
 export const listenToRequests = (cb: (reqs: AssetRequest[]) => void) => {
-  return onSnapshot(query(collection(db, getColName("requests")), orderBy("createdAt", "desc")), (snap) => {
+  const path = getColName("requests");
+  return onSnapshot(query(collection(db, path), orderBy("createdAt", "desc")), (snap) => {
     cb(snapToData<AssetRequest>(snap));
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
   });
 };
 
 export const createAssetRequest = async (req: Partial<AssetRequest>) => {
   const requestNumber = `REQ-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
   const newReq = { ...req, requestNumber, status: "New", createdAt: new Date().toISOString() };
-  await addDoc(collection(db, getColName("requests")), sanitizeData(newReq));
+  const path = getColName("requests");
+  try {
+    await addDoc(collection(db, path), sanitizeData(newReq));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
 
   try {
     await createNotification("info", "IT Hub: New Request", `${req.requesterName} requested ${req.category}.`, "/requests");
@@ -41,7 +49,12 @@ export const createAssetRequest = async (req: Partial<AssetRequest>) => {
 };
 
 export const updateAssetRequest = async (id: string, updates: Partial<AssetRequest>) => {
-  await updateDoc(doc(db, getColName("requests"), id), sanitizeData(updates));
+  const path = getColName("requests");
+  try {
+    await updateDoc(doc(db, path, id), sanitizeData(updates));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
 };
 
 export const fulfillAssetRequest = async (requestId: string, assetId: string, notes: string, employeeName: string) => {
@@ -50,21 +63,33 @@ export const fulfillAssetRequest = async (requestId: string, assetId: string, no
   batch.update(doc(db, getColName("requests"), requestId), { status: "Deployed", linkedAssetId: assetId, resolutionNotes: notes, resolvedAt: ts });
   batch.update(doc(db, getColName("assets"), assetId), { status: "Active", assignedEmployee: employeeName, lastUpdated: ts });
   batch.set(doc(collection(db, getColName("logs"))), { assetId, action: "Assigned", details: `Fulfillment: ${requestId}`, performedBy: getCurrentUserProfile()?.email || "System", timestamp: ts });
-  await batch.commit();
+  try {
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, "multiple_collections");
+  }
 };
 
 // --- INCIDENTS ---
 
 export const listenToIncidents = (cb: (tickets: IncidentReport[]) => void) => {
-  return onSnapshot(query(collection(db, getColName("incidents")), orderBy("createdAt", "desc")), (snap) => {
+  const path = getColName("incidents");
+  return onSnapshot(query(collection(db, path), orderBy("createdAt", "desc")), (snap) => {
     cb(snapToData<IncidentReport>(snap));
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
   });
 };
 
 export const createIncidentReport = async (report: Partial<IncidentReport>) => {
   const ticketNumber = `TKT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
   const newReport = { ...report, ticketNumber, status: "New", createdAt: new Date().toISOString() };
-  await addDoc(collection(db, getColName("incidents")), sanitizeData(newReport));
+  const path = getColName("incidents");
+  try {
+    await addDoc(collection(db, path), sanitizeData(newReport));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
 
   try {
     await createNotification("warning", "IT Hub: New Incident", `${report.reportedBy} reported issue at ${report.location}.`, "/repairs");
@@ -76,42 +101,63 @@ export const createIncidentReport = async (report: Partial<IncidentReport>) => {
 };
 
 export const updateIncidentReport = async (id: string, updates: Partial<IncidentReport>, updateAssetStatus: boolean = false) => {
-  await updateDoc(doc(db, getColName("incidents"), id), sanitizeData(updates));
-  if (updateAssetStatus && updates.status === "Resolved") {
-    const snap = await getDoc(doc(db, getColName("incidents"), id));
-    const data = snap.data() as IncidentReport;
-    if (data.assetId) {
-      await updateDoc(doc(db, getColName("assets"), data.assetId), { status: "Active", lastUpdated: new Date().toISOString() });
+  const path = getColName("incidents");
+  try {
+    await updateDoc(doc(db, path, id), sanitizeData(updates));
+    if (updateAssetStatus && updates.status === "Resolved") {
+      const snap = await getDoc(doc(db, path, id));
+      const data = snap.data() as IncidentReport;
+      if (data.assetId) {
+        await updateDoc(doc(db, getColName("assets"), data.assetId), { status: "Active", lastUpdated: new Date().toISOString() });
+      }
     }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
   }
 };
 
 export const processAssetReplacement = async (ticketId: string, oldAssetId: string, newAssetId: string, notes: string) => {
   const batch = writeBatch(db);
   const ts = new Date().toISOString();
-  const ticketSnap = await getDoc(doc(db, getColName("incidents"), ticketId));
-  const tData = ticketSnap.data() as IncidentReport;
+  const path = getColName("incidents");
+  let tData;
+  try {
+    const ticketSnap = await getDoc(doc(db, path, ticketId));
+    tData = ticketSnap.data() as IncidentReport;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return;
+  }
 
   batch.update(doc(db, getColName("assets"), oldAssetId), { status: "Retired", lastUpdated: ts, assignedEmployee: "" });
   batch.update(doc(db, getColName("assets"), newAssetId), { status: "Active", location: tData.location, assignedEmployee: tData.reportedBy || "", lastUpdated: ts });
-  batch.update(doc(db, getColName("incidents"), ticketId), { status: "Resolved", resolvedAt: ts, resolutionNotes: `Replaced with ${newAssetId}. ${notes}` });
+  batch.update(doc(db, path, ticketId), { status: "Resolved", resolvedAt: ts, resolutionNotes: `Replaced with ${newAssetId}. ${notes}` });
   
   const perf = getCurrentUserProfile()?.email || "System";
   batch.set(doc(collection(db, getColName("logs"))), { assetId: oldAssetId, action: "Retired", details: `Replaced in ${tData.ticketNumber}`, performedBy: perf, timestamp: ts });
   batch.set(doc(collection(db, getColName("logs"))), { assetId: newAssetId, action: "Replaced", details: `Replacement in ${tData.ticketNumber}`, performedBy: perf, timestamp: ts });
-  await batch.commit();
+  try {
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, "multiple_collections");
+  }
 };
 
 export const getPublicItemStatus = async (refId: string): Promise<PublicStatusResult | null> => {
-  const tSnap = await getDocs(query(collection(db, getColName("incidents")), where("ticketNumber", "==", refId)));
-  if (!tSnap.empty) {
-    const d = tSnap.docs[0].data() as IncidentReport;
-    return { id: d.ticketNumber, type: "Ticket", status: d.status, subject: d.assetName, details: d.description, created: d.createdAt, updated: d.resolvedAt, notes: d.resolutionNotes };
+  try {
+    const tSnap = await getDocs(query(collection(db, getColName("incidents")), where("ticketNumber", "==", refId)));
+    if (!tSnap.empty) {
+      const d = tSnap.docs[0].data() as IncidentReport;
+      return { id: d.ticketNumber, type: "Ticket", status: d.status, subject: d.assetName, details: d.description, created: d.createdAt, updated: d.resolvedAt, notes: d.resolutionNotes };
+    }
+    const rSnap = await getDocs(query(collection(db, getColName("requests")), where("requestNumber", "==", refId)));
+    if (!rSnap.empty) {
+      const d = rSnap.docs[0].data() as AssetRequest;
+      return { id: d.requestNumber, type: "Request", status: d.status, subject: d.category, details: d.reason, created: d.createdAt, updated: d.resolvedAt, notes: d.resolutionNotes };
+    }
+    return null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, "multiple_collections");
+    return null;
   }
-  const rSnap = await getDocs(query(collection(db, getColName("requests")), where("requestNumber", "==", refId)));
-  if (!rSnap.empty) {
-    const d = rSnap.docs[0].data() as AssetRequest;
-    return { id: d.requestNumber, type: "Request", status: d.status, subject: d.category, details: d.reason, created: d.createdAt, updated: d.resolvedAt, notes: d.resolutionNotes };
-  }
-  return null;
 };

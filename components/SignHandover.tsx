@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { getPendingHandover, completePendingHandover, setSandboxMode, getSandboxStatus } from '../services/storageService';
+import { getPendingHandover, completePendingHandover, setSandboxMode, getSandboxStatus, ensureAnonymousAuth } from '../services/storageService';
 import { PendingHandover } from '../types';
 import { MonitorSmartphone, CheckCircle, AlertTriangle, PenTool, Loader2, Database, Archive } from 'lucide-react';
 
@@ -39,6 +39,7 @@ const SignHandover: React.FC = () => {
         if (!id) return;
         const load = async () => {
             try {
+                await ensureAnonymousAuth();
                 const data = await getPendingHandover(id);
                 if (data && data.status === 'Pending') {
                     setPending(data);
